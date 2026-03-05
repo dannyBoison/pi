@@ -1,7 +1,7 @@
 import { Buffer } from "buffer"; // <-- must import Buffer
 
 export async function handler() {
-  const username = "Danny1to10";
+  const username = "Danny1to10  ";
   const password = "@4smYJRnjFzc2gx";
 
   const auth = "Basic " + Buffer.from(`${username}:${password}`).toString("base64");
