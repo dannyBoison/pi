@@ -20,7 +20,7 @@ const airports = [
 
 // 🔐 HARDCODE YOUR OPENSKY LOGIN HERE
 const OPENSKY_USERNAME = "Danny1to10";
-const OPENSKY_PASSWORD = "";
+const OPENSKY_PASSWORD = "@4smYJRnjFzc2gx";
 
 // Icons
 const airportIcon = L.icon({
