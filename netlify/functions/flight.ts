@@ -3,11 +3,12 @@ export async function handler() {
   const username = "Danny1to10";
   const password = "@4smYJRnjFzc2gx";
 
+  const auth = "Basic " + Buffer.from(`${username}:${password}`).toString("base64");
+
   try {
     const res = await fetch("https://opensky-network.org/api/states/all", {
       headers: {
-        Authorization:
-          "Basic " + Buffer.from(username + ":" + password).toString("base64")
+        Authorization: auth
       }
     });
 
@@ -15,13 +16,16 @@ export async function handler() {
 
     return {
       statusCode: 200,
+      headers: {
+        "Access-Control-Allow-Origin": "*"
+      },
       body: JSON.stringify(data)
     };
 
   } catch (error) {
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: "Failed to fetch aircraft data" })
+      body: JSON.stringify({ error: error.message })
     };
   }
 }
