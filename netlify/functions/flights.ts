@@ -1,24 +1,27 @@
 export async function handler() {
-
   const username = "Danny1to10";
   const password = "@4smYJRnjFzc2gx";
 
-  const auth = "Basic " + Buffer.from(`${username}:${password}`).toString("base64");
-
   try {
+    // Node fetch works fine in Netlify functions
     const res = await fetch("https://opensky-network.org/api/states/all", {
       headers: {
-        Authorization: auth
+        Authorization: "Basic " + btoa(username + ":" + password)
       }
     });
+
+    // Check if response is OK
+    if (!res.ok) {
+      return {
+        statusCode: res.status,
+        body: JSON.stringify({ error: `OpenSky returned ${res.status}` })
+      };
+    }
 
     const data = await res.json();
 
     return {
       statusCode: 200,
-      headers: {
-        "Access-Control-Allow-Origin": "*"
-      },
       body: JSON.stringify(data)
     };
 
