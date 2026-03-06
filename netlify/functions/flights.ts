@@ -2,7 +2,7 @@ import { Buffer } from "buffer";
 
 export async function handler(event, context) {
 
-  const username = "Danny";
+  const username = "Danny1to10";
   const password = "@4smYJRnjFzc2gx";
 
   const auth = "Basic " + Buffer.from(`${username}:${password}`).toString("base64");
