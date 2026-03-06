@@ -1,26 +1,35 @@
-import { Buffer } from "buffer"; // <-- must import Buffer
+import { Buffer } from "buffer";
 
-export async function handler() {
-  const username = "Danny1to10";
+export async function handler(event, context) {
+
+  const username = "danny1to10";
   const password = "@4smYJRnjFzc2gx";
 
   const auth = "Basic " + Buffer.from(`${username}:${password}`).toString("base64");
 
   try {
-    const res = await fetch("https://opensky-network.org/api/states/all", {
+
+    const response = await fetch("https://opensky-network.org/api/states/all", {
+      method: "GET",
       headers: {
-        Authorization: auth
+        Authorization: auth,
+        "Content-Type": "application/json"
       }
     });
 
-    if (!res.ok) {
+    if (!response.ok) {
+      const text = await response.text();
       return {
-        statusCode: res.status,
-        body: JSON.stringify({ error: `OpenSky returned ${res.status}` })
+        statusCode: response.status,
+        body: JSON.stringify({
+          error: "OpenSky API error",
+          status: response.status,
+          message: text
+        })
       };
     }
 
-    const data = await res.json();
+    const data = await response.json();
 
     return {
       statusCode: 200,
@@ -28,9 +37,14 @@ export async function handler() {
     };
 
   } catch (error) {
+
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: error.message })
+      body: JSON.stringify({
+        error: "fetch failed",
+        message: error.message
+      })
     };
+
   }
 }
