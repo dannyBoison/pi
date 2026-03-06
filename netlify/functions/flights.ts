@@ -1,16 +1,27 @@
 export async function handler() {
+
+  const username = "Danny1to10";
+  const password = "@4smYJRnjFzc2gx";
+
+  const auth = "Basic " + Buffer.from(username + ":" + password).toString("base64");
+
   try {
 
-    const res = await fetch(
-      "https://Danny1to10:@4smYJRnjFzc2gx@opensky-network.org/api/states/all"
-    );
+    const res = await fetch("https://opensky-network.org/api/states/all", {
+      headers: {
+        "Authorization": auth
+      }
+    });
 
     if (!res.ok) {
+      const text = await res.text();
+
       return {
         statusCode: res.status,
         body: JSON.stringify({
           error: "OpenSky API error",
-          status: res.status
+          status: res.status,
+          message: text
         })
       };
     }
@@ -26,11 +37,13 @@ export async function handler() {
     };
 
   } catch (err) {
+
     return {
       statusCode: 500,
       body: JSON.stringify({
         error: err.message
       })
     };
+
   }
 }
