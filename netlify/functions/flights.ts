@@ -1,21 +1,29 @@
 import { Buffer } from "buffer";
 
-// Cache variables
 let cachedData = null;
 let lastFetch = 0;
 
-// Function to fetch OpenSky data and update cache
-const fetchOpenSky = async () => {
+export default async function handler(req, res) {
+
+  const now = Date.now();
+
+  // Serve cached data for 30 seconds
+  if (cachedData && now - lastFetch < 30000) {
+    return res.status(200).json(cachedData);
+  }
+
   const username = "danny1to10";
   const password = "@4smYJRnjFzc2gx";
 
-  const auth = "Basic " + Buffer.from(`${username}:${password}`).toString("base64");
+  const auth =
+    "Basic " + Buffer.from(`${username}:${password}`).toString("base64");
 
   try {
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
-    const res = await fetch("https://opensky-network.org/api/states/all", {
+    const response = await fetch("https://opensky-network.org/api/states/all", {
       headers: {
         Authorization: auth,
         "User-Agent": "Mozilla/5.0"
@@ -25,39 +33,26 @@ const fetchOpenSky = async () => {
 
     clearTimeout(timeout);
 
-    if (!res.ok) {
-      const text = await res.text();
-      console.error("OpenSky API error:", text);
-      return;
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("OpenSky error:", text);
+      return res.status(response.status).json({ error: text });
     }
 
-    const data = await res.json();
+    const data = await response.json();
 
     cachedData = data;
-    lastFetch = Date.now();
+    lastFetch = now;
+
+    return res.status(200).json(data);
 
   } catch (err) {
-    console.error("OpenSky fetch error:", err);
+
+    console.error("Function error:", err);
+
+    return res.status(500).json({
+      error: err.message
+    });
+
   }
-};
-
-// Initial fetch
-fetchOpenSky();
-
-// Refresh cache every 30 seconds
-setInterval(fetchOpenSky, 30000);
-
-export async function handler() {
-  if (!cachedData) {
-    return {
-      statusCode: 503,
-      body: JSON.stringify({ error: "Data not ready yet, try again in a few seconds" })
-    };
-  }
-
-  return {
-    statusCode: 200,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(cachedData)
-  };
 }
