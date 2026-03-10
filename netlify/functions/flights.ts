@@ -1,6 +1,6 @@
 export async function handler() {
 
-  const username = "Danny1to10";
+  const username = "danny1to10";
   const password = "@4smYJRnjFzc2gx";
 
   const auth = "Basic " + Buffer.from(username + ":" + password).toString("base64");
