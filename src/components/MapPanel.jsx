@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -23,10 +23,13 @@ const airportIcon = L.icon({
   iconSize: [30, 30]
 });
 
+// Use a nicer plane icon
+const planeIconUrl = "https://cdn-icons-png.flaticon.com/512/747/747310.png"; // Sleek plane icon
+
 const planeIcon = L.icon({
-  iconUrl: "https://cdn-icons-png.flaticon.com/128/870/870194.png",
-  iconSize: [30, 30], // slightly smaller
-  iconAnchor: [15, 15]
+  iconUrl: planeIconUrl,
+  iconSize: [35, 35],
+  iconAnchor: [17, 17]
 });
 
 // Weather icons
@@ -76,7 +79,6 @@ export default function MapPanel() {
 
   // Center on Accra
   const [center, setCenter] = useState([5.6051, -0.1662]);
-
   const [radius, setRadius] = useState(150);
 
   const [city, setCity] = useState("");
@@ -85,7 +87,6 @@ export default function MapPanel() {
 
   const [livePlanes, setLivePlanes] = useState([]);
   const [lastUpdated, setLastUpdated] = useState(null);
-
   const [startTracking, setStartTracking] = useState(false);
 
   const API_KEY = import.meta.env.VITE_WEATHER_API_KEY;
@@ -102,29 +103,21 @@ export default function MapPanel() {
 
   const searchCityAndSetCenter = async () => {
     if (!city) return alert("Enter a city name");
-
     try {
       setLoading(true);
-
       const res = await fetch(
         `https://api.openweathermap.org/geo/1.0/direct?q=${city}&limit=1&appid=${API_KEY}`
       );
-
       const data = await res.json();
-
       if (!data.length) {
         alert("City not found");
         setLoading(false);
         return;
       }
-
       const { lat, lon, name } = data[0];
-
       setCenter([lat, lon]);
       setCityName(name);
-
       setLoading(false);
-
     } catch (err) {
       console.error("City search error", err);
       setLoading(false);
@@ -134,23 +127,18 @@ export default function MapPanel() {
   const generateZonesFromWeather = async () => {
     const randomPoints = generateRandomPoints(8);
     const newZones = [];
-
     for (let p of randomPoints) {
       try {
         const res = await fetch(
           `https://api.openweathermap.org/data/2.5/weather?lat=${p.lat}&lon=${p.lng}&appid=${API_KEY}&units=metric`
         );
-
         const data = await res.json();
-
         const wind = data.wind?.speed || 0;
         const temp = data.main?.temp || 0;
         const weatherMain = data.weather?.[0]?.main || "Default";
-
         let type = "safe";
         if (wind > 15 || weatherMain === "Rain") type = "danger";
         else if (wind > 8 || weatherMain === "Clouds") type = "caution";
-
         newZones.push({
           ...p,
           type,
@@ -161,62 +149,49 @@ export default function MapPanel() {
             main: weatherMain
           }
         });
-
       } catch (err) {
         console.error("Weather API error", err);
       }
     }
-
     setZones(newZones);
   };
 
   // FETCH FLIGHTS WITH RETRY
   const fetchFlightsWithRetry = async (retryDelay = 2000) => {
     let data = null;
-
     while (!data) {
       try {
-        console.log("Fetching aircraft from OpenSky...");
-
         const res = await fetch(
           "https://opensky-network.org/api/states/all?lamin=-35&lomin=-20&lamax=37&lomax=52"
         );
-
         if (!res.ok) {
-          const text = await res.text();
-          console.warn("Flight fetch failed:", text);
           await new Promise(r => setTimeout(r, retryDelay));
           continue;
         }
-
         data = await res.json();
         if (!data.states) {
           data = null;
           await new Promise(r => setTimeout(r, retryDelay));
         }
-
       } catch (err) {
-        console.error("Flight fetch error:", err);
         await new Promise(r => setTimeout(r, retryDelay));
       }
     }
-
     return data;
   };
 
-  // LIVE AIRCRAFT
+  // Animate plane movement
+  const planeRef = useRef([]);
   useEffect(() => {
     if (!startTracking) return;
 
     const fetchLiveAircraft = async () => {
       try {
         const data = await fetchFlightsWithRetry(1000);
-
         if (!data || !data.states) return;
-
         const planes = data.states
           .filter(p => p[5] && p[6])
-          .slice(0, 200)
+          .slice(0, 50)
           .map(p => ({
             icao: p[0],
             callsign: p[1],
@@ -226,19 +201,28 @@ export default function MapPanel() {
             velocity: p[9],
             heading: p[10]
           }));
-
         setLivePlanes(planes);
+        planeRef.current = planes;
         setLastUpdated(new Date().toLocaleTimeString());
-
       } catch (err) {
-        console.error("Live aircraft processing error:", err);
+        console.error(err);
       }
     };
 
     fetchLiveAircraft();
-    const interval = setInterval(fetchLiveAircraft, 30000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => {
+      fetchLiveAircraft();
+      // simulate slight movement
+      setLivePlanes(prev =>
+        prev.map(p => ({
+          ...p,
+          lat: p.lat + (Math.random() - 0.5) * 0.02,
+          lng: p.lng + (Math.random() - 0.5) * 0.02
+        }))
+      );
+    }, 5000);
 
+    return () => clearInterval(interval);
   }, [startTracking]);
 
   return (
@@ -254,8 +238,7 @@ export default function MapPanel() {
         overflowY: "auto",
         boxShadow: "2px 0 10px rgba(0,0,0,0.5)"
       }}>
-
-        <h2 style={{ marginBottom: 20 }}>✈️ Smart Flight System V8</h2>
+        <h2 style={{ marginBottom: 20 }}>✈️ Smart Flight System V9</h2>
 
         <input
           type="text"
@@ -300,11 +283,23 @@ export default function MapPanel() {
 
         <p style={{ marginTop: 10 }}>✈️ Live Aircraft: {livePlanes.length}</p>
         {lastUpdated && <p>🕒 Last Updated: {lastUpdated}</p>}
+
+        {/* Plane details */}
+        <div style={{ marginTop: 20 }}>
+          {livePlanes.map((p, i) => (
+            <div key={i} style={{ marginBottom: 10, border: "1px solid #333", borderRadius: 6, padding: 10 }}>
+              <strong>{p.callsign || "Unknown"}</strong><br />
+              Altitude: {p.altitude ?? "N/A"} m<br />
+              Speed: {p.velocity ?? "N/A"} m/s<br />
+              Heading: {p.heading ?? "N/A"}°<br />
+              <img src={planeIconUrl} alt="plane" style={{ width: 30, marginTop: 5 }} />
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Map */}
       <MapContainer center={center} zoom={6} style={{ height: "100vh", width: "70%" }}>
-
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
         {airports.map((a, i) => (
@@ -336,7 +331,6 @@ export default function MapPanel() {
         ))}
 
         <Circle center={center} radius={radius * 1000} pathOptions={{ color: "#007bff", fillOpacity: 0.1 }} />
-
       </MapContainer>
 
     </div>
