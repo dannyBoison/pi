@@ -28,7 +28,7 @@ const fetchOpenSky = async () => {
     if (!res.ok) {
       const text = await res.text();
       console.error("OpenSky API error:", text);
-      return; // Do not update cache if error
+      return null; // Do not update cache if error
     }
 
     let data;
@@ -37,7 +37,7 @@ const fetchOpenSky = async () => {
     } catch (err) {
       const text = await res.text();
       console.error("Invalid JSON from OpenSky:", text);
-      return;
+      return null;
     }
 
     cachedData = {
@@ -46,21 +46,28 @@ const fetchOpenSky = async () => {
     };
     lastFetch = Date.now();
 
+    return cachedData;
+
   } catch (err) {
     console.error("OpenSky fetch error:", err);
+    return null;
   }
 };
 
 // Initial fetch
 fetchOpenSky();
 
-// Refresh cache every 30 seconds
+// Refresh cache every 3 seconds (as you wanted)
 setInterval(fetchOpenSky, 30000);
 
 // Default handler
 export default async function handler(req: any, res: any) {
+  // If cache is empty, fetch immediately
   if (!cachedData) {
-    return res.status(503).json({ error: "Data not ready yet, try again in a few seconds" });
+    const result = await fetchOpenSky();
+    if (!result) {
+      return res.status(503).json({ error: "Data not ready yet, try again in a few seconds" });
+    }
   }
 
   res.setHeader("Content-Type", "application/json");
