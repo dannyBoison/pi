@@ -176,20 +176,18 @@ export default function MapPanel() {
 
       if (!data || !data.data?.states) return;
 
-      const planes = data.data.states
-        .filter(p => p[5] && p[6])
-        .filter(p => p[6] > 4 && p[6] < 11 && p[5] > -4 && p[5] < 2) // Ghana area
-        .slice(0, 50)
-        .map(p => ({
-          icao: p[0],
-          callsign: p[1],
-          lng: p[5],
-          lat: p[6],
-          altitude: p[7],
-          velocity: p[9],
-          heading: p[10]
-        }));
-
+     const planes = data.states
+  .filter(p => p[5] && p[6])
+  .slice(0, 200)
+  .map(p => ({
+    icao: p[0],
+    callsign: p[1],
+    lng: p[5],
+    lat: p[6],
+    altitude: p[7],
+    velocity: p[9],
+    heading: p[10]
+  }));
       setLivePlanes(planes);
       setLastUpdated(new Date().toLocaleTimeString());
     };
