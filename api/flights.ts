@@ -45,7 +45,6 @@ const fetchOpenSky = async () => {
       data
     };
     lastFetch = Date.now();
-
     return cachedData;
 
   } catch (err) {
@@ -54,15 +53,17 @@ const fetchOpenSky = async () => {
   }
 };
 
-// Initial fetch
-fetchOpenSky();
+// Initial fetch immediately
+(async () => {
+  await fetchOpenSky();
+})();
 
-// Refresh cache every 3 seconds (as you wanted)
-setInterval(fetchOpenSky, 30000);
+// Refresh cache every 3 seconds
+setInterval(fetchOpenSky, 3000);
 
 // Default handler
 export default async function handler(req: any, res: any) {
-  // If cache is empty, fetch immediately
+  // If cache is empty, fetch once before responding
   if (!cachedData) {
     const result = await fetchOpenSky();
     if (!result) {
@@ -70,6 +71,7 @@ export default async function handler(req: any, res: any) {
     }
   }
 
+  // Return cached data
   res.setHeader("Content-Type", "application/json");
   res.status(200).json(cachedData);
 }
