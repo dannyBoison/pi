@@ -58,8 +58,12 @@ const createZoneIcon = (weatherMain, zoneType) => {
 };
 
 export default function MapPanel() {
+
   const [zones, setZones] = useState([]);
-  const [center, setCenter] = useState([5.6, -0.16]);
+
+  // Center of Africa
+  const [center, setCenter] = useState([5, 20]);
+
   const [radius, setRadius] = useState(150);
 
   const [city, setCity] = useState("");
@@ -70,6 +74,7 @@ export default function MapPanel() {
   const [lastUpdated, setLastUpdated] = useState(null);
 
   const [startTracking, setStartTracking] = useState(false);
+
   const API_KEY = import.meta.env.VITE_WEATHER_API_KEY;
 
   const generateRandomPoints = (count = 8) => {
@@ -83,9 +88,11 @@ export default function MapPanel() {
   };
 
   const searchCityAndSetCenter = async () => {
+
     if (!city) return alert("Enter a city name");
 
     try {
+
       setLoading(true);
 
       const res = await fetch(
@@ -104,19 +111,24 @@ export default function MapPanel() {
 
       setCenter([lat, lon]);
       setCityName(name);
+
       setLoading(false);
 
     } catch (err) {
+
       console.error("City search error", err);
       setLoading(false);
+
     }
   };
 
   const generateZonesFromWeather = async () => {
+
     const randomPoints = generateRandomPoints(8);
     const newZones = [];
 
     for (let p of randomPoints) {
+
       try {
 
         const res = await fetch(
@@ -146,19 +158,23 @@ export default function MapPanel() {
         });
 
       } catch (err) {
+
         console.error("Weather API error", err);
+
       }
+
     }
 
     setZones(newZones);
   };
 
-  // FETCH FLIGHTS WITH RETRY
+  // FETCH FLIGHTS
   const fetchFlightsWithRetry = async (retryDelay = 2000) => {
 
     let data = null;
 
     while (!data) {
+
       try {
 
         console.log("Fetching aircraft from OpenSky...");
@@ -168,11 +184,13 @@ export default function MapPanel() {
         );
 
         if (!res.ok) {
+
           const text = await res.text();
           console.warn("Flight fetch failed:", text);
 
           await new Promise(r => setTimeout(r, retryDelay));
           continue;
+
         }
 
         data = await res.json();
@@ -180,18 +198,23 @@ export default function MapPanel() {
         console.log("OpenSky response:", data);
 
         if (!data.states) {
+
           console.warn("No states array returned from API");
 
           data = null;
+
           await new Promise(r => setTimeout(r, retryDelay));
+
         }
 
       } catch (err) {
 
         console.error("Flight fetch error:", err);
+
         await new Promise(r => setTimeout(r, retryDelay));
 
       }
+
     }
 
     return data;
@@ -229,8 +252,15 @@ export default function MapPanel() {
           }));
 
         console.log("Filtered aircraft:", planes.length);
+        console.log("Example plane:", planes[0]);
 
         setLivePlanes(planes);
+
+        // Test: auto-center map on first plane
+        if (planes.length > 0) {
+          setCenter([planes[0].lat, planes[0].lng]);
+        }
+
         setLastUpdated(new Date().toLocaleTimeString());
 
       } catch (err) {
@@ -252,6 +282,7 @@ export default function MapPanel() {
   return (
     <div style={{ display: "flex" }}>
 
+      {/* Sidebar */}
       <div style={{
         width: "30%",
         padding: 20,
@@ -311,7 +342,8 @@ export default function MapPanel() {
 
       </div>
 
-      <MapContainer center={center} zoom={6} style={{ height: "100vh", width: "70%" }}>
+      {/* Map */}
+      <MapContainer center={center} zoom={4} style={{ height: "100vh", width: "70%" }}>
 
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
@@ -336,9 +368,9 @@ export default function MapPanel() {
           <Marker key={i} position={[plane.lat, plane.lng]} icon={planeIcon}>
             <Popup>
               ✈️ {plane.callsign || "Unknown"}<br />
-              Altitude: {plane.altitude || "N/A"} m<br />
-              Speed: {plane.velocity || "N/A"} m/s<br />
-              Heading: {plane.heading || "N/A"}°
+              Altitude: {plane.altitude ?? "N/A"} m<br />
+              Speed: {plane.velocity ?? "N/A"} m/s<br />
+              Heading: {plane.heading ?? "N/A"}°
             </Popup>
           </Marker>
         ))}
