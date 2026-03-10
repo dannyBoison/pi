@@ -162,11 +162,17 @@ export default function MapPanel() {
   useEffect(() => {
     if (!startTracking) return;
 
-    const fetchLiveAircraft = async () => {
+   const fetchLiveAircraft = async () => {
   try {
-    const res = await fetch("/.netlify/functions/flights");
-    const data = await res.json();
+    const res = await fetch("/api/flights"); // points to Vercel function
 
+    if (!res.ok) {
+      const text = await res.text(); // read as text for debugging
+      console.error("Flight fetch failed:", text);
+      return;
+    }
+
+    const data = await res.json();
     if (!data.states) return;
 
     const planes = data.states
@@ -184,6 +190,10 @@ export default function MapPanel() {
       }));
 
     setLivePlanes(planes);
+
+     // Update timestamp
+    setLastUpdated(new Date().toLocaleTimeString());
+
 
   } catch (err) {
     console.error("Flight fetch error:", err);
