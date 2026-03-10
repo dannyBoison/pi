@@ -150,7 +150,7 @@ export default function MapPanel() {
     let data = null;
     while (!data) {
       try {
-        const res = await fetch("/api/flights");
+        const res = await fetch("https://opensky-network.org/api/states/all?lamin=4&lomin=-4&lamax=11&lomax=2");
         if (!res.ok) {
           const text = await res.text();
           console.warn("Flight fetch failed:", text);
