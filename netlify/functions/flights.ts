@@ -4,26 +4,14 @@ import { Buffer } from "buffer";
 let cachedData = null;
 let lastFetch = 0;
 
-export async function handler() {
-
-  const now = Date.now();
-
-  // Return cached data if less than 30 seconds old
-  if (cachedData && now - lastFetch < 30000) {
-    return {
-      statusCode: 200,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(cachedData)
-    };
-  }
-
+// Function to fetch OpenSky data and update cache
+const fetchOpenSky = async () => {
   const username = "danny1to10";
   const password = "@4smYJRnjFzc2gx";
 
   const auth = "Basic " + Buffer.from(`${username}:${password}`).toString("base64");
 
   try {
-
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
@@ -39,56 +27,37 @@ export async function handler() {
 
     if (!res.ok) {
       const text = await res.text();
-
-      return {
-        statusCode: res.status,
-        body: JSON.stringify({
-          error: "OpenSky API error",
-          message: text
-        })
-      };
+      console.error("OpenSky API error:", text);
+      return;
     }
 
     const data = await res.json();
 
-    // Save to cache
     cachedData = data;
-    lastFetch = now;
-
-    return {
-      statusCode: 200,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data)
-    };
+    lastFetch = Date.now();
 
   } catch (err) {
+    console.error("OpenSky fetch error:", err);
+  }
+};
 
-    console.error("Function error:", err);
+// Initial fetch
+fetchOpenSky();
 
+// Refresh cache every 30 seconds
+setInterval(fetchOpenSky, 30000);
+
+export async function handler() {
+  if (!cachedData) {
     return {
-      statusCode: 500,
-      body: JSON.stringify({
-        error: err.message,
-        stack: err.stack
-      })
+      statusCode: 503,
+      body: JSON.stringify({ error: "Data not ready yet, try again in a few seconds" })
     };
-
   }
 
+  return {
+    statusCode: 200,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cachedData)
+  };
 }
-✅ What Changed:
-
-Added:
-
-let cachedData = null;
-let lastFetch = 0;
-
-Before fetching, it checks if cached data is less than 30 seconds old:
-
-if (cachedData && now - lastFetch < 30000) { ... }
-
-If yes, it returns cached data immediately, reducing OpenSky API calls and Netlify usage.
-
-If you want, I can also add an optional interval cache refresh so Netlify fetches in the background every 30s, instead of waiting for the first request. This makes the front-end even smoother.
-
-Do you want me to do that?
