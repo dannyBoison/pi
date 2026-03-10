@@ -4,8 +4,7 @@ import {
   TileLayer,
   Marker,
   Popup,
-  Circle,
-  Polyline
+  Circle
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -17,10 +16,6 @@ const airports = [
   { name: "Takoradi Airport", coords: [4.8962, -1.7554] },
   { name: "Kumasi Airport", coords: [6.7148, -1.5670] }
 ];
-
-// 🔐 HARDCODE YOUR OPENSKY LOGIN HERE
-const OPENSKY_USERNAME = "Danny1to10";
-const OPENSKY_PASSWORD = "@4smYJRnjFzc2gx";
 
 // Icons
 const airportIcon = L.icon({
@@ -64,24 +59,17 @@ const createZoneIcon = (weatherMain, zoneType) => {
 
 export default function MapPanel() {
   const [zones, setZones] = useState([]);
-  const [selectedZone, setSelectedZone] = useState(null);
   const [center, setCenter] = useState([5.6, -0.16]);
   const [radius, setRadius] = useState(150);
-
-  const [route, setRoute] = useState([]);
-  const [planePos, setPlanePos] = useState(airports[0].coords);
 
   const [city, setCity] = useState("");
   const [cityName, setCityName] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // LIVE AIRCRAFT
   const [livePlanes, setLivePlanes] = useState([]);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
-  // Button control
   const [startTracking, setStartTracking] = useState(false);
-
-  const stepRef = useRef(0);
   const API_KEY = import.meta.env.VITE_WEATHER_API_KEY;
 
   const generateRandomPoints = (count = 8) => {
@@ -155,53 +143,59 @@ export default function MapPanel() {
     }
 
     setZones(newZones);
-    if (newZones.length > 0) setSelectedZone(newZones[0]);
   };
 
-  // LIVE AIRCRAFT (only after button click)
+  // Retry flight fetch until data is ready
+  const fetchFlightsWithRetry = async (retryDelay = 2000) => {
+    let data = null;
+    while (!data) {
+      try {
+        const res = await fetch("/api/flights");
+        if (!res.ok) {
+          const text = await res.text();
+          console.warn("Flight fetch failed:", text);
+          await new Promise(r => setTimeout(r, retryDelay));
+          continue;
+        }
+
+        data = await res.json();
+      } catch (err) {
+        console.error("Flight fetch error:", err);
+        await new Promise(r => setTimeout(r, retryDelay));
+      }
+    }
+    return data;
+  };
+
+  // LIVE AIRCRAFT
   useEffect(() => {
     if (!startTracking) return;
 
-   const fetchLiveAircraft = async () => {
-  try {
-    const res = await fetch("/api/flights"); // points to Vercel function
+    const fetchLiveAircraft = async () => {
+      const data = await fetchFlightsWithRetry(1000);
 
-    if (!res.ok) {
-      const text = await res.text(); // read as text for debugging
-      console.error("Flight fetch failed:", text);
-      return;
-    }
+      if (!data || !data.data?.states) return;
 
-    const data = await res.json();
-    if (!data.states) return;
+      const planes = data.data.states
+        .filter(p => p[5] && p[6])
+        .filter(p => p[6] > 4 && p[6] < 11 && p[5] > -4 && p[5] < 2) // Ghana area
+        .slice(0, 50)
+        .map(p => ({
+          icao: p[0],
+          callsign: p[1],
+          lng: p[5],
+          lat: p[6],
+          altitude: p[7],
+          velocity: p[9],
+          heading: p[10]
+        }));
 
-    const planes = data.states
-      .filter(p => p[5] && p[6])
-      .filter(p => p[6] > 4 && p[6] < 11 && p[5] > -4 && p[5] < 2) // Ghana area
-      .slice(0, 50)
-      .map(p => ({
-        icao: p[0],
-        callsign: p[1],
-        lng: p[5],
-        lat: p[6],
-        altitude: p[7],
-        velocity: p[9],
-        heading: p[10]
-      }));
+      setLivePlanes(planes);
+      setLastUpdated(new Date().toLocaleTimeString());
+    };
 
-    setLivePlanes(planes);
-
-     // Update timestamp
-    setLastUpdated(new Date().toLocaleTimeString());
-
-
-  } catch (err) {
-    console.error("Flight fetch error:", err);
-  }
-};
-
-    fetchLiveAircraft();
-    const interval = setInterval(fetchLiveAircraft, 30000);
+    fetchLiveAircraft(); // initial fetch
+    const interval = setInterval(fetchLiveAircraft, 30000); // 30s interval
 
     return () => clearInterval(interval);
   }, [startTracking]);
@@ -232,7 +226,6 @@ export default function MapPanel() {
 
         <hr />
 
-        {/* NEW BUTTON ONLY */}
         <button
           onClick={() => setStartTracking(true)}
           style={{ width: "100%", padding: 12, background: "green", color: "white" }}
@@ -241,6 +234,7 @@ export default function MapPanel() {
         </button>
 
         <p>✈️ Live Aircraft: {livePlanes.length}</p>
+        {lastUpdated && <p>🕒 Last Updated: {lastUpdated}</p>}
       </div>
 
       {/* Map */}
