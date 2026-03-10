@@ -38,14 +38,17 @@ export async function handler() {
       body: JSON.stringify(data)
     };
 
-  } catch (err) {
+} catch (err) {
 
-    return {
-      statusCode: 500,
-      body: JSON.stringify({
-        error: err.message
-      })
-    };
+  console.error("Function error:", err);
 
-  }
+  return {
+    statusCode: 500,
+    body: JSON.stringify({
+      error: err.message,
+      stack: err.stack
+    })
+  };
+
+}
 }
