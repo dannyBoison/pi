@@ -1,11 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import {
-  MapContainer,
-  TileLayer,
-  Marker,
-  Popup,
-  Circle
-} from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Circle } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -17,15 +11,14 @@ const airports = [
   { name: "Kumasi Airport", coords: [6.7148, -1.567] }
 ];
 
-// Icons
+// Airport icon
 const airportIcon = L.icon({
   iconUrl: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
   iconSize: [30, 30]
 });
 
-// Use a nicer plane icon
-const planeIconUrl = "https://cdn-icons-png.flaticon.com/512/747/747310.png"; // Sleek plane icon
-
+// Plane icon
+const planeIconUrl = "https://cdn-icons-png.flaticon.com/512/747/747310.png";
 const planeIcon = L.icon({
   iconUrl: planeIconUrl,
   iconSize: [35, 35],
@@ -43,16 +36,12 @@ const weatherIconsUrls = {
 };
 
 // Zone colors
-const zoneColors = {
-  danger: "red",
-  caution: "yellow",
-  safe: "green"
-};
+const zoneColors = { danger: "red", caution: "yellow", safe: "green" };
 
+// Weather zone icon
 const createZoneIcon = (weatherMain, zoneType) => {
   const color = zoneColors[zoneType] || "green";
   const weatherUrl = weatherIconsUrls[weatherMain] || weatherIconsUrls.Default;
-
   return L.divIcon({
     html: `
       <div style="
@@ -64,8 +53,8 @@ const createZoneIcon = (weatherMain, zoneType) => {
         display:flex;
         align-items:center;
         justify-content:center;
-        box-shadow: 0 0 5px rgba(0,0,0,0.5);
-        transition: transform 0.2s;
+        box-shadow:0 0 5px rgba(0,0,0,0.5);
+        transition: transform 0.5s;
       ">
         <img src="${weatherUrl}" style="width:20px;height:20px;" />
       </div>`,
@@ -74,23 +63,22 @@ const createZoneIcon = (weatherMain, zoneType) => {
 };
 
 export default function MapPanel() {
-
   const [zones, setZones] = useState([]);
-
-  // Center on Accra
-  const [center, setCenter] = useState([5.6051, -0.1662]);
+  const [center, setCenter] = useState([5.6051, -0.1662]); // Accra
   const [radius, setRadius] = useState(150);
-
   const [city, setCity] = useState("");
   const [cityName, setCityName] = useState("");
   const [loading, setLoading] = useState(false);
-
   const [livePlanes, setLivePlanes] = useState([]);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [startTracking, setStartTracking] = useState(false);
+  const [selectedPlane, setSelectedPlane] = useState(null);
+  const [selectedZone, setSelectedZone] = useState(null);
 
   const API_KEY = import.meta.env.VITE_WEATHER_API_KEY;
+  const planeRef = useRef([]);
 
+  // Generate random points for zones
   const generateRandomPoints = (count = 8) => {
     const points = [];
     for (let i = 0; i < count; i++) {
@@ -101,6 +89,7 @@ export default function MapPanel() {
     return points;
   };
 
+  // Search city
   const searchCityAndSetCenter = async () => {
     if (!city) return alert("Enter a city name");
     try {
@@ -119,11 +108,12 @@ export default function MapPanel() {
       setCityName(name);
       setLoading(false);
     } catch (err) {
-      console.error("City search error", err);
+      console.error(err);
       setLoading(false);
     }
   };
 
+  // Generate weather zones
   const generateZonesFromWeather = async () => {
     const randomPoints = generateRandomPoints(8);
     const newZones = [];
@@ -150,13 +140,13 @@ export default function MapPanel() {
           }
         });
       } catch (err) {
-        console.error("Weather API error", err);
+        console.error(err);
       }
     }
     setZones(newZones);
   };
 
-  // FETCH FLIGHTS WITH RETRY
+  // Fetch flights with retry
   const fetchFlightsWithRetry = async (retryDelay = 2000) => {
     let data = null;
     while (!data) {
@@ -180,11 +170,9 @@ export default function MapPanel() {
     return data;
   };
 
-  // Animate plane movement
-  const planeRef = useRef([]);
+  // Live aircraft tracking + smooth movement
   useEffect(() => {
     if (!startTracking) return;
-
     const fetchLiveAircraft = async () => {
       try {
         const data = await fetchFlightsWithRetry(1000);
@@ -208,20 +196,18 @@ export default function MapPanel() {
         console.error(err);
       }
     };
-
     fetchLiveAircraft();
     const interval = setInterval(() => {
       fetchLiveAircraft();
-      // simulate slight movement
+      // simulate smooth movement
       setLivePlanes(prev =>
         prev.map(p => ({
           ...p,
-          lat: p.lat + (Math.random() - 0.5) * 0.02,
-          lng: p.lng + (Math.random() - 0.5) * 0.02
+          lat: p.lat + (Math.random() - 0.5) * 0.01,
+          lng: p.lng + (Math.random() - 0.5) * 0.01
         }))
       );
     }, 5000);
-
     return () => clearInterval(interval);
   }, [startTracking]);
 
@@ -229,110 +215,85 @@ export default function MapPanel() {
     <div style={{ display: "flex", fontFamily: "sans-serif" }}>
 
       {/* Sidebar */}
-      <div style={{
-        width: "30%",
-        padding: 20,
-        background: "#1a1a1a",
-        color: "white",
-        height: "100vh",
-        overflowY: "auto",
-        boxShadow: "2px 0 10px rgba(0,0,0,0.5)"
-      }}>
-        <h2 style={{ marginBottom: 20 }}>✈️ Smart Flight System V9</h2>
+      <div style={{ width: "30%", padding: 20, background: "#1a1a1a", color: "white", height: "100vh", overflowY: "auto", boxShadow: "2px 0 10px rgba(0,0,0,0.5)" }}>
+        <h2>✈️ Smart Flight System V10</h2>
 
-        <input
-          type="text"
-          placeholder="Enter city (eg. Accra)"
-          value={city}
-          onChange={(e) => setCity(e.target.value)}
-          style={{ width: "100%", padding: 10, marginBottom: 10, borderRadius: 6, border: "none" }}
-        />
-
-        <button
-          onClick={searchCityAndSetCenter}
-          style={{ width: "100%", padding: 10, borderRadius: 6, background: "#007bff", color: "white", marginBottom: 15 }}
-        >
-          📍 Set Center
-        </button>
-
+        {/* City & Controls */}
+        <input type="text" placeholder="Enter city (eg. Accra)" value={city} onChange={e => setCity(e.target.value)} style={{ width: "100%", padding: 10, marginBottom: 10, borderRadius: 6, border: "none" }} />
+        <button onClick={searchCityAndSetCenter} style={{ width: "100%", padding: 10, borderRadius: 6, background: "#007bff", color: "white", marginBottom: 15 }}>📍 Set Center</button>
         <p>Selected City: <strong>{cityName || "Accra"}</strong></p>
 
         <label>Radius (km)</label>
-        <input
-          type="number"
-          value={radius}
-          onChange={e => setRadius(+e.target.value)}
-          style={{ width: "100%", padding: 10, marginBottom: 15, borderRadius: 6, border: "none" }}
-        />
+        <input type="number" value={radius} onChange={e => setRadius(+e.target.value)} style={{ width: "100%", padding: 10, marginBottom: 15, borderRadius: 6, border: "none" }} />
 
-        <button
-          onClick={generateZonesFromWeather}
-          style={{ width: "100%", padding: 10, borderRadius: 6, background: "#ffc107", color: "black", marginBottom: 15 }}
-        >
+        <button onClick={generateZonesFromWeather} style={{ width: "100%", padding: 10, borderRadius: 6, background: "#ffc107", color: "black", marginBottom: 15 }}>
           {loading ? "Scanning Weather..." : "🌦 Generate Zones"}
         </button>
 
-        <hr style={{ border: "1px solid #333", margin: "15px 0" }} />
-
-        <button
-          onClick={() => setStartTracking(true)}
-          style={{ width: "100%", padding: 12, borderRadius: 6, background: "#28a745", color: "white", fontWeight: "bold" }}
-        >
+        <button onClick={() => setStartTracking(true)} style={{ width: "100%", padding: 12, borderRadius: 6, background: "#28a745", color: "white", fontWeight: "bold" }}>
           ✈️ Start Live Aircraft Tracking
         </button>
 
         <p style={{ marginTop: 10 }}>✈️ Live Aircraft: {livePlanes.length}</p>
         {lastUpdated && <p>🕒 Last Updated: {lastUpdated}</p>}
 
-        {/* Plane details */}
-        <div style={{ marginTop: 20 }}>
-          {livePlanes.map((p, i) => (
-            <div key={i} style={{ marginBottom: 10, border: "1px solid #333", borderRadius: 6, padding: 10 }}>
-              <strong>{p.callsign || "Unknown"}</strong><br />
-              Altitude: {p.altitude ?? "N/A"} m<br />
-              Speed: {p.velocity ?? "N/A"} m/s<br />
-              Heading: {p.heading ?? "N/A"}°<br />
-              <img src={planeIconUrl} alt="plane" style={{ width: 30, marginTop: 5 }} />
-            </div>
-          ))}
-        </div>
+        {/* Selected plane details */}
+        {selectedPlane && (
+          <div style={{ marginTop: 20, border: "1px solid #333", borderRadius: 6, padding: 10 }}>
+            <h3>✈️ {selectedPlane.callsign || "Unknown"}</h3>
+            <img src={planeIconUrl} alt="plane" style={{ width: 50 }} />
+            <p>Altitude: {selectedPlane.altitude ?? "N/A"} m</p>
+            <p>Speed: {selectedPlane.velocity ?? "N/A"} m/s</p>
+            <p>Heading: {selectedPlane.heading ?? "N/A"}°</p>
+          </div>
+        )}
+
+        {/* Selected weather zone */}
+        {selectedZone && (
+          <div style={{ marginTop: 20, border: "1px solid #333", borderRadius: 6, padding: 10 }}>
+            <h3>🌦 Weather Zone ({selectedZone.type.toUpperCase()})</h3>
+            <img src={weatherIconsUrls[selectedZone.weather.main] || weatherIconsUrls.Default} alt="weather" style={{ width: 40 }} />
+            <p>{selectedZone.weather.description}</p>
+            <p>Temp: {selectedZone.weather.temp}°C</p>
+            <p>Wind: {selectedZone.weather.wind} m/s</p>
+          </div>
+        )}
+
       </div>
 
       {/* Map */}
       <MapContainer center={center} zoom={6} style={{ height: "100vh", width: "70%" }}>
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"} />
 
+        {/* Airports */}
         {airports.map((a, i) => (
-          <Marker key={i} position={a.coords} icon={airportIcon}>
-            <Popup style={{ fontWeight: "bold" }}>{a.name}</Popup>
-          </Marker>
+          <Marker key={i} position={a.coords} icon={airportIcon} />
         ))}
 
+        {/* Weather Zones */}
         {zones.map((z, i) => (
-          <Marker key={i} position={[z.lat, z.lng]} icon={createZoneIcon(z.weather.main, z.type)}>
-            <Popup>
-              <strong>{z.type.toUpperCase()}</strong><br />
-              {z.weather.description}<br />
-              Temp: {z.weather.temp}°C<br />
-              Wind: {z.weather.wind} m/s
-            </Popup>
-          </Marker>
+          <Marker
+            key={i}
+            position={[z.lat, z.lng]}
+            icon={createZoneIcon(z.weather.main, z.type)}
+            eventHandlers={{ click: () => setSelectedZone(z) }}
+          />
         ))}
 
+        {/* Live Planes */}
         {livePlanes.map((plane, i) => (
-          <Marker key={i} position={[plane.lat, plane.lng]} icon={planeIcon} rotationAngle={plane.heading || 0}>
-            <Popup>
-              ✈️ {plane.callsign || "Unknown"}<br />
-              Altitude: {plane.altitude ?? "N/A"} m<br />
-              Speed: {plane.velocity ?? "N/A"} m/s<br />
-              Heading: {plane.heading ?? "N/A"}°
-            </Popup>
-          </Marker>
+          <Marker
+            key={i}
+            position={[plane.lat, plane.lng]}
+            icon={planeIcon}
+            rotationAngle={plane.heading || 0}
+            eventHandlers={{ click: () => setSelectedPlane(plane) }}
+          />
         ))}
 
+        {/* Radius */}
         <Circle center={center} radius={radius * 1000} pathOptions={{ color: "#007bff", fillOpacity: 0.1 }} />
       </MapContainer>
-
     </div>
   );
 }
