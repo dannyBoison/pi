@@ -1,44 +1,41 @@
-let cachedData = null;
-let lastFetch = 0;
-
-const FETCH_INTERVAL = 30000; // 30 seconds
-
 export default async function handler(req, res) {
   try {
 
-    const now = Date.now();
+    const username = "Danny1to10";
+    const password = "@4smYJRnjFzc2gx";
 
-    // If cache expired or empty → fetch fresh
-    if (!cachedData || now - lastFetch > FETCH_INTERVAL) {
+    const auth = btoa(`${username}:${password}`);
 
-      const username = process.env.OPENSKY_USERNAME;
-      const password = process.env.OPENSKY_PASSWORD;
+    const response = await fetch("https://opensky-network.org/api/states/all", {
+      headers: {
+        Authorization: `Basic ${auth}`
+      }
+    });
 
-      const auth = Buffer.from(`${username}:${password}`).toString("base64");
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("OpenSky error:", text);
 
-      const response = await fetch("https://opensky-network.org/api/states/all", {
-        headers: {
-          Authorization: `Basic ${auth}`
-        }
+      return res.status(500).json({
+        error: "OpenSky request failed",
+        details: text
       });
-
-      const data = await response.json();
-
-      cachedData = data;
-      lastFetch = now;
     }
 
+    const data = await response.json();
+
     return res.status(200).json({
-      timestamp: lastFetch,
-      data: cachedData
+      timestamp: new Date().toISOString(),
+      data
     });
 
   } catch (err) {
 
-    console.error("OpenSky fetch error:", err);
+    console.error("Server error:", err);
 
     return res.status(500).json({
-      error: "Flight data fetch failed"
+      error: "Flight data fetch failed",
+      message: err.message
     });
 
   }
