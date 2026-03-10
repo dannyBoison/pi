@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -14,7 +14,7 @@ const airports = [
   { name: "Accra Intl Airport", coords: [5.6051, -0.1662] },
   { name: "Tamale Airport", coords: [9.5573, -0.8631] },
   { name: "Takoradi Airport", coords: [4.8962, -1.7554] },
-  { name: "Kumasi Airport", coords: [6.7148, -1.5670] }
+  { name: "Kumasi Airport", coords: [6.7148, -1.567] }
 ];
 
 // Icons
@@ -51,7 +51,7 @@ const createZoneIcon = (weatherMain, zoneType) => {
 
   return L.divIcon({
     html: `<div style="background-color:${color};border-radius:50%;width:35px;height:35px;display:flex;align-items:center;justify-content:center;">
-             <img src="${weatherUrl}" style="width:20px;height:20px;" />
+            <img src="${weatherUrl}" style="width:20px;height:20px;" />
            </div>`,
     className: ""
   });
@@ -87,9 +87,11 @@ export default function MapPanel() {
 
     try {
       setLoading(true);
+
       const res = await fetch(
         `https://api.openweathermap.org/geo/1.0/direct?q=${city}&limit=1&appid=${API_KEY}`
       );
+
       const data = await res.json();
 
       if (!data.length) {
@@ -99,9 +101,11 @@ export default function MapPanel() {
       }
 
       const { lat, lon, name } = data[0];
+
       setCenter([lat, lon]);
       setCityName(name);
       setLoading(false);
+
     } catch (err) {
       console.error("City search error", err);
       setLoading(false);
@@ -114,9 +118,11 @@ export default function MapPanel() {
 
     for (let p of randomPoints) {
       try {
+
         const res = await fetch(
           `https://api.openweathermap.org/data/2.5/weather?lat=${p.lat}&lon=${p.lng}&appid=${API_KEY}&units=metric`
         );
+
         const data = await res.json();
 
         const wind = data.wind?.speed || 0;
@@ -124,6 +130,7 @@ export default function MapPanel() {
         const weatherMain = data.weather?.[0]?.main || "Default";
 
         let type = "safe";
+
         if (wind > 15 || weatherMain === "Rain") type = "danger";
         else if (wind > 8 || weatherMain === "Clouds") type = "caution";
 
@@ -133,10 +140,11 @@ export default function MapPanel() {
           weather: {
             temp,
             wind,
-            description: data.weather[0]?.description || "",
+            description: data.weather?.[0]?.description || "",
             main: weatherMain
           }
         });
+
       } catch (err) {
         console.error("Weather API error", err);
       }
@@ -145,63 +153,114 @@ export default function MapPanel() {
     setZones(newZones);
   };
 
-  // Retry flight fetch until data is ready
+  // FETCH FLIGHTS WITH RETRY
   const fetchFlightsWithRetry = async (retryDelay = 2000) => {
+
     let data = null;
+
     while (!data) {
       try {
-        const res = await fetch("https://opensky-network.org/api/states/all?lamin=-35&lomin=-20&lamax=37&lomax=52");
+
+        console.log("Fetching aircraft from OpenSky...");
+
+        const res = await fetch(
+          "https://opensky-network.org/api/states/all?lamin=-35&lomin=-20&lamax=37&lomax=52"
+        );
+
         if (!res.ok) {
           const text = await res.text();
           console.warn("Flight fetch failed:", text);
+
           await new Promise(r => setTimeout(r, retryDelay));
           continue;
         }
 
         data = await res.json();
+
+        console.log("OpenSky response:", data);
+
+        if (!data.states) {
+          console.warn("No states array returned from API");
+
+          data = null;
+          await new Promise(r => setTimeout(r, retryDelay));
+        }
+
       } catch (err) {
+
         console.error("Flight fetch error:", err);
         await new Promise(r => setTimeout(r, retryDelay));
+
       }
     }
+
     return data;
   };
 
   // LIVE AIRCRAFT
   useEffect(() => {
+
     if (!startTracking) return;
 
     const fetchLiveAircraft = async () => {
-      const data = await fetchFlightsWithRetry(1000);
 
-      if (!data || !data.data?.states) return;
+      try {
 
-     const planes = data.states
-  .filter(p => p[5] && p[6])
-  .slice(0, 200)
-  .map(p => ({
-    icao: p[0],
-    callsign: p[1],
-    lng: p[5],
-    lat: p[6],
-    altitude: p[7],
-    velocity: p[9],
-    heading: p[10]
-  }));
-      setLivePlanes(planes);
-      setLastUpdated(new Date().toLocaleTimeString());
+        const data = await fetchFlightsWithRetry(1000);
+
+        if (!data || !data.states) {
+          console.warn("No aircraft data received");
+          return;
+        }
+
+        console.log("Total aircraft received:", data.states.length);
+
+        const planes = data.states
+          .filter(p => p[5] && p[6])
+          .slice(0, 200)
+          .map(p => ({
+            icao: p[0],
+            callsign: p[1],
+            lng: p[5],
+            lat: p[6],
+            altitude: p[7],
+            velocity: p[9],
+            heading: p[10]
+          }));
+
+        console.log("Filtered aircraft:", planes.length);
+
+        setLivePlanes(planes);
+        setLastUpdated(new Date().toLocaleTimeString());
+
+      } catch (err) {
+
+        console.error("Live aircraft processing error:", err);
+
+      }
+
     };
 
-    fetchLiveAircraft(); // initial fetch
-    const interval = setInterval(fetchLiveAircraft, 30000); // 30s interval
+    fetchLiveAircraft();
+
+    const interval = setInterval(fetchLiveAircraft, 30000);
 
     return () => clearInterval(interval);
+
   }, [startTracking]);
 
   return (
     <div style={{ display: "flex" }}>
-      {/* Sidebar */}
-      <div style={{ width: "30%", padding: 20, background: "#111", color: "white", height: "100vh", overflowY: "scroll" }}>
+
+      <div style={{
+        width: "30%",
+        padding: 20,
+        background: "#111",
+        color: "white",
+        height: "100vh",
+        overflowY: "scroll"
+      }}>
+
         <h2>✈️ Smart Flight System V7 (Live Tracking)</h2>
 
         <input
@@ -211,13 +270,23 @@ export default function MapPanel() {
           onChange={(e) => setCity(e.target.value)}
           style={{ width: "100%", padding: 8, marginBottom: 8 }}
         />
-        <button onClick={searchCityAndSetCenter}>📍 Set Center</button>
+
+        <button onClick={searchCityAndSetCenter}>
+          📍 Set Center
+        </button>
+
         <p>Selected City: <strong>{cityName || "None"}</strong></p>
 
         <label>Radius (km)</label>
-        <input type="number" value={radius} onChange={e => setRadius(+e.target.value)} />
+
+        <input
+          type="number"
+          value={radius}
+          onChange={e => setRadius(+e.target.value)}
+        />
 
         <br /><br />
+
         <button onClick={generateZonesFromWeather}>
           {loading ? "Scanning Weather..." : "🌦 Generate Zones"}
         </button>
@@ -226,17 +295,24 @@ export default function MapPanel() {
 
         <button
           onClick={() => setStartTracking(true)}
-          style={{ width: "100%", padding: 12, background: "green", color: "white" }}
+          style={{
+            width: "100%",
+            padding: 12,
+            background: "green",
+            color: "white"
+          }}
         >
           ✈️ Start Live Aircraft Tracking
         </button>
 
         <p>✈️ Live Aircraft: {livePlanes.length}</p>
+
         {lastUpdated && <p>🕒 Last Updated: {lastUpdated}</p>}
+
       </div>
 
-      {/* Map */}
       <MapContainer center={center} zoom={6} style={{ height: "100vh", width: "70%" }}>
+
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
         {airports.map((a, i) => (
@@ -268,7 +344,9 @@ export default function MapPanel() {
         ))}
 
         <Circle center={center} radius={radius * 1000} />
+
       </MapContainer>
+
     </div>
   );
 }
