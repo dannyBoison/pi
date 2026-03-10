@@ -1,3 +1,5 @@
+import { Buffer } from "buffer";
+
 export async function handler() {
 
   const username = "danny1to10";
