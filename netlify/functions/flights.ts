@@ -1,6 +1,21 @@
 import { Buffer } from "buffer";
 
+// Cache variables
+let cachedData = null;
+let lastFetch = 0;
+
 export async function handler() {
+
+  const now = Date.now();
+
+  // Return cached data if less than 30 seconds old
+  if (cachedData && now - lastFetch < 30000) {
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cachedData)
+    };
+  }
 
   const username = "danny1to10";
   const password = "@4smYJRnjFzc2gx";
@@ -36,11 +51,13 @@ export async function handler() {
 
     const data = await res.json();
 
+    // Save to cache
+    cachedData = data;
+    lastFetch = now;
+
     return {
       statusCode: 200,
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data)
     };
 
@@ -51,10 +68,27 @@ export async function handler() {
     return {
       statusCode: 500,
       body: JSON.stringify({
-        error: err.message
+        error: err.message,
+        stack: err.stack
       })
     };
 
   }
 
 }
+✅ What Changed:
+
+Added:
+
+let cachedData = null;
+let lastFetch = 0;
+
+Before fetching, it checks if cached data is less than 30 seconds old:
+
+if (cachedData && now - lastFetch < 30000) { ... }
+
+If yes, it returns cached data immediately, reducing OpenSky API calls and Netlify usage.
+
+If you want, I can also add an optional interval cache refresh so Netlify fetches in the background every 30s, instead of waiting for the first request. This makes the front-end even smoother.
+
+Do you want me to do that?
