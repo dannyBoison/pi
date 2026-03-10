@@ -236,7 +236,7 @@ export default function MapPanel() {
     };
 
     fetchLiveAircraft();
-    const interval = setInterval(fetchLiveAircraft, 30000);
+    const interval = setInterval(fetchLiveAircraft, 500000);
     return () => clearInterval(interval);
 
   }, [startTracking]);
