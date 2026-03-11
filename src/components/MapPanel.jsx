@@ -282,7 +282,7 @@ export default function MapPanel() {
     try {
 
       const res = await fetch(
-        `http://api.aviationstack.com/v1/flights?access_key=${AVIATION_API}&flight_iata=${callsign}`
+        `https://api.aviationstack.com/v1/flights?access_key=${AVIATION_API}&flight_iata=${callsign}`
       );
 
       const data = await res.json();
