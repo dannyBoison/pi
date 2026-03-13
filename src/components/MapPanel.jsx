@@ -28,7 +28,7 @@ const airportIcon = L.icon({
 });
 
 const planeIcon = L.icon({
-  iconUrl: "https://cdn-icons-png.flaticon.com/128/10844/10844777.png",
+  iconUrl: "https://cdn-icons-png.flaticon.com/128/6221/6221851.png",
   iconSize: [30, 30],
   iconAnchor: [15, 15]
 });
