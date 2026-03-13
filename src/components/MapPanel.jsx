@@ -291,7 +291,7 @@ export default function MapPanel() {
         <div style={card}>
           <p>✈ Planes: {livePlanes.length}</p>
           <p>⏱ Updated: {lastUpdated}</p>
-          <p>📍 Center: {cityName || "Accra"}</p>
+        
         </div>
 
 
