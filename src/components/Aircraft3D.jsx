@@ -3,6 +3,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Sky, Cloud, useGLTF } from "@react-three/drei";
 
 
+
 // ================= WORLD =================
 function World({ planeRef }) {
 
@@ -14,7 +15,6 @@ function World({ planeRef }) {
 
     const plane = planeRef.current;
 
-    // move world opposite direction so plane appears to travel
     worldRef.current.position.x = -plane.position.x;
     worldRef.current.position.z = -plane.position.z;
 
@@ -24,16 +24,15 @@ function World({ planeRef }) {
 
     <group ref={worldRef}>
 
-      {/* Ground */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -2, 0]}>
-        <planeGeometry args={[1000, 1000]} />
+        <planeGeometry args={[2000, 2000]} />
         <meshStandardMaterial color="#1f7a1f" />
       </mesh>
 
-      {/* Clouds */}
       <Cloud position={[30, 20, -40]} speed={0.2}/>
       <Cloud position={[-50, 25, -80]} speed={0.2}/>
       <Cloud position={[60, 18, -120]} speed={0.2}/>
+      <Cloud position={[120, 30, -200]} speed={0.15}/>
 
     </group>
 
@@ -53,15 +52,13 @@ function FollowCamera({ planeRef }) {
 
     const plane = planeRef.current;
 
-    const targetX = plane.position.x;
-    const targetY = plane.position.y + 3;
-    const targetZ = plane.position.z + 8;
+    const target = {
+      x: plane.position.x,
+      y: plane.position.y + 4,
+      z: plane.position.z + 12
+    };
 
-    // smooth camera follow
-    camera.position.lerp(
-      { x: targetX, y: targetY, z: targetZ },
-      0.05
-    );
+    camera.position.lerp(target, 0.05);
 
     camera.lookAt(
       plane.position.x,
@@ -88,16 +85,15 @@ function PlaneModel({ controls, planeRef }) {
 
     const plane = planeRef.current;
 
-    // forward velocity
+    if (controls.engineOff) return;
+
     plane.translateZ(-controls.speed);
 
-    // turn left
     if (controls.left) {
       plane.rotation.y += 0.02;
       plane.rotation.z = 0.35;
     }
 
-    // turn right
     if (controls.right) {
       plane.rotation.y -= 0.02;
       plane.rotation.z = -0.35;
@@ -107,13 +103,11 @@ function PlaneModel({ controls, planeRef }) {
       plane.rotation.z *= 0.9;
     }
 
-    // climb
     if (controls.climb) {
       plane.position.y += 0.06;
       plane.rotation.x = -0.3;
     }
 
-    // descend
     if (controls.descend) {
       plane.position.y -= 0.06;
       plane.rotation.x = 0.3;
@@ -139,14 +133,20 @@ export default function Aircraft3D() {
   const [speed, setSpeed] = useState(0.05);
   const [altitude, setAltitude] = useState(0);
   const [heading, setHeading] = useState(0);
+  const [fuel, setFuel] = useState(100);
+  const [autopilot, setAutopilot] = useState(false);
+  const [warning, setWarning] = useState("");
 
   const controls = useRef({
     left:false,
     right:false,
     climb:false,
     descend:false,
-    speed:0.05
+    speed:0.05,
+    engineOff:false
   });
+
+
 
   useEffect(()=>{
     controls.current.speed = speed;
@@ -154,8 +154,48 @@ export default function Aircraft3D() {
 
 
 
-  // CONTROL FUNCTIONS
+  // ================= FUEL SYSTEM =================
+  useEffect(()=>{
+
+    const fuelTimer = setInterval(()=>{
+
+      setFuel(f=>{
+        if(f<=0){
+          controls.current.engineOff=true
+          setWarning("ENGINE FAILURE - OUT OF FUEL")
+          return 0
+        }
+        return f - 0.05
+      })
+
+    },200)
+
+    return ()=>clearInterval(fuelTimer)
+
+  },[])
+
+
+
+  // ================= STALL WARNING =================
+  useEffect(()=>{
+
+    if(speed < 0.02 && altitude > 500){
+
+      setWarning("STALL WARNING")
+
+    }else{
+
+      setWarning("")
+
+    }
+
+  },[speed, altitude])
+
+
+
+  // ================= CONTROLS =================
   const turnLeft = ()=>{
+    if(autopilot) return
     controls.current.left = true;
     setHeading(h=>h-5);
   }
@@ -163,6 +203,7 @@ export default function Aircraft3D() {
   const stopLeft = ()=> controls.current.left=false;
 
   const turnRight = ()=>{
+    if(autopilot) return
     controls.current.right = true;
     setHeading(h=>h+5);
   }
@@ -170,6 +211,7 @@ export default function Aircraft3D() {
   const stopRight = ()=> controls.current.right=false;
 
   const climb = ()=>{
+    if(autopilot) return
     controls.current.climb=true;
     setAltitude(a=>a+100);
   }
@@ -177,11 +219,28 @@ export default function Aircraft3D() {
   const stopClimb = ()=> controls.current.climb=false;
 
   const descend = ()=>{
+    if(autopilot) return
     controls.current.descend=true;
     setAltitude(a=>a-100);
   }
 
   const stopDescend = ()=> controls.current.descend=false;
+
+
+
+  // ================= AUTOPILOT =================
+  const toggleAutopilot = ()=>{
+
+    setAutopilot(a=>!a)
+
+    if(!autopilot){
+      controls.current.left=false
+      controls.current.right=false
+      controls.current.climb=false
+      controls.current.descend=false
+    }
+
+  }
 
 
 
@@ -191,7 +250,7 @@ export default function Aircraft3D() {
 
 <div
 style={{
-height:"560px",
+height:"580px",
 border:"3px solid #0ea5e9",
 borderRadius:"12px",
 position:"relative",
@@ -216,8 +275,6 @@ overflow:"hidden"
 enablePan={true}
 enableZoom={true}
 enableRotate={true}
-zoomSpeed={1.2}
-rotateSpeed={0.8}
 />
 
 </Canvas>
@@ -232,13 +289,24 @@ top:"10px",
 left:"10px",
 background:"rgba(0,0,0,0.7)",
 color:"white",
-padding:"10px",
-borderRadius:"8px"
+padding:"12px",
+borderRadius:"8px",
+fontSize:"14px"
 }}
 >
+
 <div>Speed: {(speed*1000).toFixed(0)} km/h</div>
 <div>Altitude: {altitude} ft</div>
 <div>Heading: {heading}°</div>
+<div>Fuel: {fuel.toFixed(1)}%</div>
+<div>Autopilot: {autopilot ? "ON" : "OFF"}</div>
+
+{warning && (
+<div style={{color:"red",marginTop:"5px"}}>
+⚠ {warning}
+</div>
+)}
+
 </div>
 
 
@@ -254,12 +322,12 @@ background:"rgba(0,0,0,0.75)",
 padding:"12px",
 borderRadius:"10px",
 color:"white",
-width:"320px",
+width:"340px",
 textAlign:"center"
 }}
 >
 
-<div style={{marginBottom:"6px"}}>Throttle</div>
+<div>Throttle</div>
 
 <input
 type="range"
@@ -270,7 +338,6 @@ value={speed}
 onChange={(e)=>setSpeed(parseFloat(e.target.value))}
 style={{width:"100%"}}
 />
-
 
 <div
 style={{
@@ -290,6 +357,21 @@ gap:"6px"
 <button onMouseDown={descend} onMouseUp={stopDescend}>Descend</button>
 
 </div>
+
+<button
+onClick={toggleAutopilot}
+style={{
+marginTop:"8px",
+width:"100%",
+background:"#0ea5e9",
+border:"none",
+padding:"6px",
+color:"white",
+borderRadius:"5px"
+}}
+>
+Toggle Autopilot
+</button>
 
 </div>
 
