@@ -1,52 +1,93 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, useGLTF } from "@react-three/drei";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { OrbitControls, Sky, Cloud, useGLTF } from "@react-three/drei";
+
+
+// ================= GROUND =================
+function Ground() {
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -2, 0]}>
+      <planeGeometry args={[500, 500]} />
+      <meshStandardMaterial color="#1f7a1f" />
+    </mesh>
+  );
+}
+
+
+
+// ================= CAMERA FOLLOW =================
+function FollowCamera({ target }) {
+
+  const { camera } = useThree();
+
+  useFrame(() => {
+
+    if (!target.current) return;
+
+    const plane = target.current;
+
+    const offset = [0, 3, 8];
+
+    camera.position.x = plane.position.x + offset[0];
+    camera.position.y = plane.position.y + offset[1];
+    camera.position.z = plane.position.z + offset[2];
+
+    camera.lookAt(
+      plane.position.x,
+      plane.position.y,
+      plane.position.z
+    );
+
+  });
+
+  return null;
+}
+
 
 
 // ================= PLANE MODEL =================
-function PlaneModel({ controls }) {
+function PlaneModel({ controls, planeRef }) {
 
   const gltf = useGLTF("/models/product.glb");
-  const planeRef = useRef();
 
   useFrame(() => {
 
     if (!planeRef.current) return;
 
-    // always move forward
-    planeRef.current.translateZ(-controls.speed);
+    const plane = planeRef.current;
+
+    plane.translateZ(-controls.speed);
 
     // turn left
     if (controls.left) {
-      planeRef.current.rotation.y += 0.02;
-      planeRef.current.rotation.z = 0.25;
+      plane.rotation.y += 0.02;
+      plane.rotation.z = 0.25;
     }
 
     // turn right
     if (controls.right) {
-      planeRef.current.rotation.y -= 0.02;
-      planeRef.current.rotation.z = -0.25;
+      plane.rotation.y -= 0.02;
+      plane.rotation.z = -0.25;
     }
 
-    // level wings
     if (!controls.left && !controls.right) {
-      planeRef.current.rotation.z *= 0.9;
+      plane.rotation.z *= 0.9;
     }
 
     // climb
     if (controls.climb) {
-      planeRef.current.position.y += 0.05;
-      planeRef.current.rotation.x = -0.2;
+      plane.position.y += 0.05;
+      plane.rotation.x = -0.2;
     }
 
     // descend
-    if (controls.descend) {
-      planeRef.current.position.y -= 0.05;
-      planeRef.current.rotation.x = 0.2;
+    if (controls.descend && plane.position.y > -1) {
+      plane.position.y -= 0.05;
+      plane.rotation.x = 0.2;
     }
 
     if (!controls.climb && !controls.descend) {
-      planeRef.current.rotation.x *= 0.9;
+      plane.rotation.x *= 0.9;
     }
 
   });
@@ -65,6 +106,8 @@ function PlaneModel({ controls }) {
 // ================= MAIN SIM =================
 export default function Aircraft3D({ selectedRegion, decision }) {
 
+  const planeRef = useRef();
+
   const [controlMode, setControlMode] = useState(false);
   const [speed, setSpeed] = useState(0.05);
   const [altitude, setAltitude] = useState(0);
@@ -80,6 +123,13 @@ export default function Aircraft3D({ selectedRegion, decision }) {
 
 
 
+  // sync speed
+  useEffect(() => {
+    controls.current.speed = speed;
+  }, [speed]);
+
+
+
   // ================= KEYBOARD =================
   useEffect(() => {
 
@@ -90,14 +140,11 @@ export default function Aircraft3D({ selectedRegion, decision }) {
       switch (e.key) {
 
         case "ArrowUp":
-          controls.current.speed += 0.002;
-          setSpeed(controls.current.speed);
+          setSpeed(s => s + 0.002);
           break;
 
         case "ArrowDown":
-          controls.current.speed -= 0.002;
-          if (controls.current.speed < 0.01) controls.current.speed = 0.01;
-          setSpeed(controls.current.speed);
+          setSpeed(s => Math.max(0.01, s - 0.002));
           break;
 
         case "ArrowLeft":
@@ -125,8 +172,6 @@ export default function Aircraft3D({ selectedRegion, decision }) {
           alert("Exited Simulation");
           break;
 
-        default:
-          break;
       }
 
     };
@@ -153,8 +198,6 @@ export default function Aircraft3D({ selectedRegion, decision }) {
           controls.current.descend = false;
           break;
 
-        default:
-          break;
       }
 
     };
@@ -173,7 +216,7 @@ export default function Aircraft3D({ selectedRegion, decision }) {
 
 
 
-  // ================= ENTER SIM =================
+  // ================= START SIM =================
   const startSimulation = () => {
 
     alert(
@@ -205,7 +248,6 @@ ESC → Exit Simulation`
       }}
     >
 
-
       {/* HUD */}
       <div
         style={{
@@ -227,23 +269,35 @@ ESC → Exit Simulation`
 
 
 
-      {/* 3D SIM */}
+      {/* SIMULATION */}
       <div
         onClick={startSimulation}
         style={{
-          height: "500px",
+          height: "520px",
           border: "3px solid #0ea5e9",
           borderRadius: "10px",
           cursor: "pointer"
         }}
       >
 
-        <Canvas camera={{ position: [0, 2, 8] }}>
+        <Canvas>
 
           <ambientLight intensity={0.6} />
-          <directionalLight position={[10, 10, 5]} intensity={1} />
+          <directionalLight position={[10, 10, 5]} />
 
-          <PlaneModel controls={controls.current} />
+          <Sky sunPosition={[100, 20, 100]} />
+
+          <Cloud position={[10, 20, -20]} speed={0.2} />
+          <Cloud position={[-20, 25, -40]} speed={0.3} />
+
+          <Ground />
+
+          <PlaneModel
+            controls={controls.current}
+            planeRef={planeRef}
+          />
+
+          <FollowCamera target={planeRef} />
 
           {!controlMode && <OrbitControls />}
 
@@ -253,7 +307,7 @@ ESC → Exit Simulation`
 
 
 
-      {/* REGION STATUS */}
+      {/* STATUS */}
       {selectedRegion && (
         <p style={{ textAlign: "center", marginTop: "10px" }}>
           Aircraft approaching {selectedRegion.name} → Status: {decision}
