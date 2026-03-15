@@ -55,30 +55,35 @@ function PlaneModel({ controls, planeRef }) {
 
     const plane = planeRef.current;
 
+    // forward motion
     plane.translateZ(-controls.speed);
 
+    // turn left
     if (controls.left) {
       plane.rotation.y += 0.02;
-      plane.rotation.z = 0.25;
+      plane.rotation.z = 0.3;
     }
 
+    // turn right
     if (controls.right) {
       plane.rotation.y -= 0.02;
-      plane.rotation.z = -0.25;
+      plane.rotation.z = -0.3;
     }
 
     if (!controls.left && !controls.right) {
       plane.rotation.z *= 0.9;
     }
 
+    // climb
     if (controls.climb) {
       plane.position.y += 0.05;
-      plane.rotation.x = -0.2;
+      plane.rotation.x = -0.25;
     }
 
+    // descend
     if (controls.descend && plane.position.y > -1) {
       plane.position.y -= 0.05;
-      plane.rotation.x = 0.2;
+      plane.rotation.x = 0.25;
     }
 
     if (!controls.climb && !controls.descend) {
@@ -111,6 +116,7 @@ export default function Aircraft3D({ selectedRegion, decision }) {
 
 
 
+  // Sync speed with simulation
   useEffect(() => {
     controls.current.speed = speed;
   }, [speed]);
@@ -168,29 +174,18 @@ export default function Aircraft3D({ selectedRegion, decision }) {
     >
 
 
-      {/* HUD */}
+      {/* SIMULATION CONTAINER */}
       <div
         style={{
-          display: "flex",
-          justifyContent: "space-around",
-          background: "#0f172a",
-          color: "white",
-          padding: "12px",
-          borderRadius: "8px"
+          height: "550px",
+          border: "3px solid #0ea5e9",
+          borderRadius: "12px",
+          position: "relative",
+          overflow: "hidden"
         }}
       >
 
-        <div>Speed: {(speed * 1000).toFixed(0)} km/h</div>
-        <div>Altitude: {altitude} ft</div>
-        <div>Heading: {heading}°</div>
-
-      </div>
-
-
-
-      {/* SIMULATION */}
-      <div style={{ height: "520px", marginTop: "10px" }}>
-
+        {/* 3D WORLD */}
         <Canvas>
 
           <ambientLight intensity={0.6} />
@@ -214,65 +209,96 @@ export default function Aircraft3D({ selectedRegion, decision }) {
 
         </Canvas>
 
-      </div>
+
+
+        {/* HUD OVERLAY */}
+        <div
+          style={{
+            position: "absolute",
+            top: "10px",
+            left: "10px",
+            background: "rgba(15,23,42,0.85)",
+            color: "white",
+            padding: "10px",
+            borderRadius: "8px",
+            fontSize: "14px"
+          }}
+        >
+          <div>Speed: {(speed * 1000).toFixed(0)} km/h</div>
+          <div>Altitude: {altitude} ft</div>
+          <div>Heading: {heading}°</div>
+        </div>
 
 
 
-      {/* CONTROL PANEL */}
-      <div
-        style={{
-          marginTop: "15px",
-          padding: "15px",
-          background: "#111827",
-          borderRadius: "10px",
-          color: "white"
-        }}
-      >
+        {/* CONTROL PANEL INSIDE SIM */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: "10px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "rgba(17,24,39,0.9)",
+            padding: "12px",
+            borderRadius: "10px",
+            color: "white",
+            width: "320px",
+            textAlign: "center"
+          }}
+        >
 
-        <h3>Flight Control Panel</h3>
+          <div style={{ marginBottom: "8px" }}>Throttle</div>
 
-        <div style={{ marginBottom: "10px" }}>
-          Throttle
           <input
             type="range"
             min="0.01"
             max="0.2"
             step="0.005"
             value={speed}
-            onChange={(e) => setSpeed(Number(e.target.value))}
+            onChange={(e) => setSpeed(parseFloat(e.target.value))}
             style={{ width: "100%" }}
           />
-        </div>
 
-        <div style={{ display: "flex", gap: "10px" }}>
 
-          <button
-            onMouseDown={turnLeft}
-            onMouseUp={stopLeft}
+
+          <div
+            style={{
+              marginTop: "10px",
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "6px"
+            }}
           >
-            Turn Left
-          </button>
 
-          <button
-            onMouseDown={turnRight}
-            onMouseUp={stopRight}
-          >
-            Turn Right
-          </button>
+            <button
+              onMouseDown={turnLeft}
+              onMouseUp={stopLeft}
+            >
+              ⬅ Turn
+            </button>
 
-          <button
-            onMouseDown={climb}
-            onMouseUp={stopClimb}
-          >
-            Climb
-          </button>
+            <button
+              onMouseDown={turnRight}
+              onMouseUp={stopRight}
+            >
+              Turn ➡
+            </button>
 
-          <button
-            onMouseDown={descend}
-            onMouseUp={stopDescend}
-          >
-            Descend
-          </button>
+            <button
+              onMouseDown={climb}
+              onMouseUp={stopClimb}
+            >
+              Climb
+            </button>
+
+            <button
+              onMouseDown={descend}
+              onMouseUp={stopDescend}
+            >
+              Descend
+            </button>
+
+          </div>
 
         </div>
 
