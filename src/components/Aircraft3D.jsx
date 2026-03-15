@@ -3,6 +3,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Sky, Cloud, useGLTF } from "@react-three/drei";
 
 
+
 // ================= GROUND =================
 function Ground() {
   return (
@@ -26,11 +27,9 @@ function FollowCamera({ target }) {
 
     const plane = target.current;
 
-    const offset = [0, 3, 8];
-
-    camera.position.x = plane.position.x + offset[0];
-    camera.position.y = plane.position.y + offset[1];
-    camera.position.z = plane.position.z + offset[2];
+    camera.position.x = plane.position.x;
+    camera.position.y = plane.position.y + 3;
+    camera.position.z = plane.position.z + 8;
 
     camera.lookAt(
       plane.position.x,
@@ -45,7 +44,7 @@ function FollowCamera({ target }) {
 
 
 
-// ================= PLANE MODEL =================
+// ================= PLANE =================
 function PlaneModel({ controls, planeRef }) {
 
   const gltf = useGLTF("/models/product.glb");
@@ -58,13 +57,11 @@ function PlaneModel({ controls, planeRef }) {
 
     plane.translateZ(-controls.speed);
 
-    // turn left
     if (controls.left) {
       plane.rotation.y += 0.02;
       plane.rotation.z = 0.25;
     }
 
-    // turn right
     if (controls.right) {
       plane.rotation.y -= 0.02;
       plane.rotation.z = -0.25;
@@ -74,13 +71,11 @@ function PlaneModel({ controls, planeRef }) {
       plane.rotation.z *= 0.9;
     }
 
-    // climb
     if (controls.climb) {
       plane.position.y += 0.05;
       plane.rotation.x = -0.2;
     }
 
-    // descend
     if (controls.descend && plane.position.y > -1) {
       plane.position.y -= 0.05;
       plane.rotation.x = 0.2;
@@ -92,13 +87,7 @@ function PlaneModel({ controls, planeRef }) {
 
   });
 
-  return (
-    <primitive
-      ref={planeRef}
-      object={gltf.scene}
-      scale={0.5}
-    />
-  );
+  return <primitive ref={planeRef} object={gltf.scene} scale={0.5} />;
 }
 
 
@@ -108,7 +97,6 @@ export default function Aircraft3D({ selectedRegion, decision }) {
 
   const planeRef = useRef();
 
-  const [controlMode, setControlMode] = useState(false);
   const [speed, setSpeed] = useState(0.05);
   const [altitude, setAltitude] = useState(0);
   const [heading, setHeading] = useState(0);
@@ -123,117 +111,48 @@ export default function Aircraft3D({ selectedRegion, decision }) {
 
 
 
-  // sync speed
   useEffect(() => {
     controls.current.speed = speed;
   }, [speed]);
 
 
 
-  // ================= KEYBOARD =================
-  useEffect(() => {
+  // ================= CONTROL FUNCTIONS =================
 
-    const keyDown = (e) => {
+  const turnLeft = () => {
+    controls.current.left = true;
+    setHeading(h => h - 5);
+  };
 
-      if (!controlMode) return;
+  const stopLeft = () => {
+    controls.current.left = false;
+  };
 
-      switch (e.key) {
+  const turnRight = () => {
+    controls.current.right = true;
+    setHeading(h => h + 5);
+  };
 
-        case "ArrowUp":
-          setSpeed(s => s + 0.002);
-          break;
+  const stopRight = () => {
+    controls.current.right = false;
+  };
 
-        case "ArrowDown":
-          setSpeed(s => Math.max(0.01, s - 0.002));
-          break;
+  const climb = () => {
+    controls.current.climb = true;
+    setAltitude(a => a + 100);
+  };
 
-        case "ArrowLeft":
-          controls.current.left = true;
-          setHeading(h => h - 2);
-          break;
+  const stopClimb = () => {
+    controls.current.climb = false;
+  };
 
-        case "ArrowRight":
-          controls.current.right = true;
-          setHeading(h => h + 2);
-          break;
+  const descend = () => {
+    controls.current.descend = true;
+    setAltitude(a => a - 100);
+  };
 
-        case "z":
-          controls.current.climb = true;
-          setAltitude(a => a + 100);
-          break;
-
-        case "x":
-          controls.current.descend = true;
-          setAltitude(a => a - 100);
-          break;
-
-        case "Escape":
-          setControlMode(false);
-          alert("Exited Simulation");
-          break;
-
-      }
-
-    };
-
-
-
-    const keyUp = (e) => {
-
-      switch (e.key) {
-
-        case "ArrowLeft":
-          controls.current.left = false;
-          break;
-
-        case "ArrowRight":
-          controls.current.right = false;
-          break;
-
-        case "z":
-          controls.current.climb = false;
-          break;
-
-        case "x":
-          controls.current.descend = false;
-          break;
-
-      }
-
-    };
-
-
-
-    window.addEventListener("keydown", keyDown);
-    window.addEventListener("keyup", keyUp);
-
-    return () => {
-      window.removeEventListener("keydown", keyDown);
-      window.removeEventListener("keyup", keyUp);
-    };
-
-  }, [controlMode]);
-
-
-
-  // ================= START SIM =================
-  const startSimulation = () => {
-
-    alert(
-`FLIGHT CONTROL MODE
-
-⬆ Arrow Up → Increase Speed
-⬇ Arrow Down → Reduce Speed
-⬅ Arrow Left → Turn Left
-➡ Arrow Right → Turn Right
-Z → Climb
-X → Descend
-
-ESC → Exit Simulation`
-    );
-
-    setControlMode(true);
-
+  const stopDescend = () => {
+    controls.current.descend = false;
   };
 
 
@@ -242,11 +161,12 @@ ESC → Exit Simulation`
 
     <section
       style={{
-        width: "90%",
-        margin: "40px auto",
+        width: "95%",
+        margin: "20px auto",
         fontFamily: "sans-serif"
       }}
     >
+
 
       {/* HUD */}
       <div
@@ -256,8 +176,7 @@ ESC → Exit Simulation`
           background: "#0f172a",
           color: "white",
           padding: "12px",
-          borderRadius: "8px",
-          marginBottom: "10px"
+          borderRadius: "8px"
         }}
       >
 
@@ -270,15 +189,7 @@ ESC → Exit Simulation`
 
 
       {/* SIMULATION */}
-      <div
-        onClick={startSimulation}
-        style={{
-          height: "520px",
-          border: "3px solid #0ea5e9",
-          borderRadius: "10px",
-          cursor: "pointer"
-        }}
-      >
+      <div style={{ height: "520px", marginTop: "10px" }}>
 
         <Canvas>
 
@@ -299,9 +210,71 @@ ESC → Exit Simulation`
 
           <FollowCamera target={planeRef} />
 
-          {!controlMode && <OrbitControls />}
+          <OrbitControls />
 
         </Canvas>
+
+      </div>
+
+
+
+      {/* CONTROL PANEL */}
+      <div
+        style={{
+          marginTop: "15px",
+          padding: "15px",
+          background: "#111827",
+          borderRadius: "10px",
+          color: "white"
+        }}
+      >
+
+        <h3>Flight Control Panel</h3>
+
+        <div style={{ marginBottom: "10px" }}>
+          Throttle
+          <input
+            type="range"
+            min="0.01"
+            max="0.2"
+            step="0.005"
+            value={speed}
+            onChange={(e) => setSpeed(Number(e.target.value))}
+            style={{ width: "100%" }}
+          />
+        </div>
+
+        <div style={{ display: "flex", gap: "10px" }}>
+
+          <button
+            onMouseDown={turnLeft}
+            onMouseUp={stopLeft}
+          >
+            Turn Left
+          </button>
+
+          <button
+            onMouseDown={turnRight}
+            onMouseUp={stopRight}
+          >
+            Turn Right
+          </button>
+
+          <button
+            onMouseDown={climb}
+            onMouseUp={stopClimb}
+          >
+            Climb
+          </button>
+
+          <button
+            onMouseDown={descend}
+            onMouseUp={stopDescend}
+          >
+            Descend
+          </button>
+
+        </div>
 
       </div>
 
