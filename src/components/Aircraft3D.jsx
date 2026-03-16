@@ -1,306 +1,190 @@
-import React, { useRef, useState, useEffect } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Sky, Cloud, useGLTF } from "@react-three/drei";
-import * as THREE from "three";
+import React, { useState } from "react";
+import { Canvas } from "@react-three/fiber";
+import { OrbitControls, useGLTF } from "@react-three/drei";
 
 
-// ================= PLANE =================
-function Plane({ planeRef, throttle, controls, setSpeed, setAltitude, setHeading }) {
+// ================= PLANE MODEL =================
+function PlaneModel({ heading, pitch }) {
 
-  const velocity = useRef(0);
-  const gltf = useGLTF("/models/product.glb");
+const gltf = useGLTF("/models/product.glb");
 
-  useFrame(() => {
-
-    if (!planeRef.current) return;
-
-    const plane = planeRef.current;
-
-    // acceleration from throttle
-    velocity.current += throttle * 0.0008;
-
-    // drag
-    velocity.current *= 0.992;
-
-    // FORWARD MOVEMENT (correct direction)
-    const forward = new THREE.Vector3(0,0,-1);
-    forward.applyQuaternion(plane.quaternion);
-    plane.position.add(forward.multiplyScalar(velocity.current * 5));
-
-    setSpeed((velocity.current * 1200).toFixed(0));
-
-    // LIFT
-    if (velocity.current > 0.02) {
-      plane.position.y += velocity.current * 0.15;
-    }
-
-    // GRAVITY
-    plane.position.y -= 0.002;
-
-    setAltitude((plane.position.y * 100).toFixed(0));
-
-    // TURN LEFT
-    if (controls.current.left) {
-      plane.rotation.y += 0.02;
-      plane.rotation.z = THREE.MathUtils.lerp(plane.rotation.z, 0.5, 0.1);
-    }
-
-    // TURN RIGHT
-    if (controls.current.right) {
-      plane.rotation.y -= 0.02;
-      plane.rotation.z = THREE.MathUtils.lerp(plane.rotation.z, -0.5, 0.1);
-    }
-
-    // RESET ROLL
-    if (!controls.current.left && !controls.current.right) {
-      plane.rotation.z = THREE.MathUtils.lerp(plane.rotation.z, 0, 0.1);
-    }
-
-    // CLIMB
-    if (controls.current.up) {
-      plane.position.y += 0.1;
-      plane.rotation.x = THREE.MathUtils.lerp(plane.rotation.x, -0.4, 0.1);
-    }
-
-    // DESCEND
-    if (controls.current.down) {
-      plane.position.y -= 0.1;
-      plane.rotation.x = THREE.MathUtils.lerp(plane.rotation.x, 0.4, 0.1);
-    }
-
-    if (!controls.current.up && !controls.current.down) {
-      plane.rotation.x = THREE.MathUtils.lerp(plane.rotation.x, 0, 0.1);
-    }
-
-    setHeading((THREE.MathUtils.radToDeg(plane.rotation.y) % 360).toFixed(0));
-
-  });
-
-  return (
-    <group ref={planeRef}>
-      <primitive object={gltf.scene} scale={0.5} />
-    </group>
-  );
-}
-
-
-
-// ================= CAMERA FOLLOW =================
-function FollowCamera({ planeRef }) {
-
-  const { camera } = useThree();
-
-  useFrame(() => {
-
-    if (!planeRef.current) return;
-
-    const plane = planeRef.current;
-
-    const offset = new THREE.Vector3(0,4,12);
-    offset.applyQuaternion(plane.quaternion);
-
-    const desired = plane.position.clone().add(offset);
-
-    camera.position.lerp(desired,0.05);
-    camera.lookAt(plane.position);
-
-  });
-
-  return null;
-}
-
-
-
-// ================= WORLD =================
-function World() {
-
-  return (
-
-    <group>
-
-      <mesh rotation={[-Math.PI/2,0,0]} position={[0,-2,0]}>
-        <planeGeometry args={[8000,8000]} />
-        <meshStandardMaterial color="#3b8f3b" />
-      </mesh>
-
-      <Cloud position={[100,40,-200]} speed={0.2}/>
-      <Cloud position={[-200,35,-400]} speed={0.2}/>
-      <Cloud position={[300,45,-600]} speed={0.2}/>
-
-    </group>
-
-  );
-
-}
-
-
-
-// ================= MAIN =================
-export default function AircraftSim() {
-
-  const planeRef = useRef();
-
-  const controls = useRef({
-    left:false,
-    right:false,
-    up:false,
-    down:false
-  });
-
-  const [throttle,setThrottle] = useState(0.3);
-  const [speed,setSpeed] = useState(0);
-  const [altitude,setAltitude] = useState(0);
-  const [heading,setHeading] = useState(0);
-
-
-
-  // KEYBOARD CONTROLS
-  useEffect(()=>{
-
-    const down = (e)=>{
-
-      e.preventDefault();
-
-      if(e.key==="ArrowLeft") controls.current.left=true
-      if(e.key==="ArrowRight") controls.current.right=true
-      if(e.key==="ArrowUp") controls.current.up=true
-      if(e.key==="ArrowDown") controls.current.down=true
-
-    }
-
-    const up = (e)=>{
-
-      if(e.key==="ArrowLeft") controls.current.left=false
-      if(e.key==="ArrowRight") controls.current.right=false
-      if(e.key==="ArrowUp") controls.current.up=false
-      if(e.key==="ArrowDown") controls.current.down=false
-
-    }
-
-    window.addEventListener("keydown",down)
-    window.addEventListener("keyup",up)
-
-    return ()=>{
-      window.removeEventListener("keydown",down)
-      window.removeEventListener("keyup",up)
-    }
-
-  },[])
-
-
-
-  return (
-
-<div style={{width:"100%",height:"100vh"}}>
-
-<Canvas camera={{ position:[0,6,15], fov:60 }}>
-
-<ambientLight intensity={0.7}/>
-<directionalLight position={[10,20,10]}/>
-
-<Sky sunPosition={[100,20,100]}/>
-
-<World/>
-
-<Plane
-planeRef={planeRef}
-throttle={throttle}
-controls={controls}
-setSpeed={setSpeed}
-setAltitude={setAltitude}
-setHeading={setHeading}
+return (
+<primitive
+object={gltf.scene}
+scale={0.5}
+rotation={[pitch, heading, 0]}
 />
+);
+}
 
-<FollowCamera planeRef={planeRef}/>
+
+
+// ================= MAIN SIMULATOR =================
+export default function Aircraft3D({ selectedRegion, decision }) {
+
+const [throttle, setThrottle] = useState(40);
+const [altitude, setAltitude] = useState(12000);
+const [heading, setHeading] = useState(0);
+const [pitch, setPitch] = useState(0);
+
+
+
+return (
+<section
+style={{
+width: "90%",
+margin: "40px auto",
+fontFamily: "sans-serif"
+}}
+>
+
+{/* ================= HUD ================= */}
+<div
+style={{
+background: "#0f172a",
+color: "white",
+padding: "15px",
+borderRadius: "10px",
+marginBottom: "20px",
+display: "flex",
+justifyContent: "space-around"
+}}
+>
+
+<div>
+<h4>Throttle</h4>
+<p>{throttle}%</p>
+</div>
+
+<div>
+<h4>Altitude</h4>
+<p>{altitude} ft</p>
+</div>
+
+<div>
+<h4>Heading</h4>
+<p>{heading}°</p>
+</div>
+
+<div>
+<h4>Pitch</h4>
+<p>{pitch.toFixed(2)}</p>
+</div>
+
+</div>
+
+
+
+{/* ================= 3D VIEW ================= */}
+<div style={{ height: "420px", width: "100%" }}>
+
+<Canvas camera={{ position: [0, 2, 6] }}>
+
+<ambientLight intensity={0.5} />
+<directionalLight position={[10, 10, 5]} intensity={1} />
+
+<PlaneModel heading={heading} pitch={pitch} />
+
+<OrbitControls />
 
 </Canvas>
 
-
-
-{/* HUD */}
-<div style={{
-position:"absolute",
-top:"20px",
-left:"20px",
-background:"rgba(0,0,0,0.75)",
-color:"white",
-padding:"12px",
-borderRadius:"10px",
-fontSize:"14px"
-}}>
-
-<div>Speed: {speed} km/h</div>
-<div>Altitude: {altitude} ft</div>
-<div>Heading: {heading}°</div>
-<div>Throttle: {(throttle*100).toFixed(0)}%</div>
-
 </div>
 
 
 
-{/* FLIGHT CONTROLS */}
-<div style={{
-position:"absolute",
-bottom:"40px",
-left:"40px",
-background:"rgba(0,0,0,0.75)",
-padding:"15px",
-borderRadius:"10px"
-}}>
+{/* ================= FLIGHT CONTROLS ================= */}
+<div
+style={{
+marginTop: "25px",
+background: "#e5e7eb",
+padding: "20px",
+borderRadius: "10px"
+}}
+>
 
-<button
-onMouseDown={()=>controls.current.left=true}
-onMouseUp={()=>controls.current.left=false}
->⬅</button>
+<h3>Flight Controls</h3>
 
-<button
-onMouseDown={()=>controls.current.right=true}
-onMouseUp={()=>controls.current.right=false}
->➡</button>
-
-<br/>
-
-<button
-onMouseDown={()=>controls.current.up=true}
-onMouseUp={()=>controls.current.up=false}
->⬆</button>
-
-<button
-onMouseDown={()=>controls.current.down=true}
-onMouseUp={()=>controls.current.down=false}
->⬇</button>
-
-</div>
-
-
-
-{/* THROTTLE */}
-<div style={{
-position:"absolute",
-bottom:"40px",
-right:"40px",
-background:"rgba(0,0,0,0.75)",
-padding:"15px",
-borderRadius:"10px",
-color:"white"
-}}>
-
-<div>Throttle</div>
-
+{/* Throttle */}
+<label>Throttle</label>
 <input
 type="range"
 min="0"
-max="1"
-step="0.01"
+max="100"
 value={throttle}
-onChange={(e)=>setThrottle(parseFloat(e.target.value))}
-style={{width:"200px"}}
+onChange={(e) => setThrottle(Number(e.target.value))}
+style={{ width: "100%" }}
+/>
+
+
+
+{/* Altitude */}
+<label>Altitude</label>
+<input
+type="range"
+min="1000"
+max="40000"
+step="500"
+value={altitude}
+onChange={(e) => setAltitude(Number(e.target.value))}
+style={{ width: "100%" }}
+/>
+
+
+
+{/* Heading */}
+<label>Heading</label>
+<input
+type="range"
+min="0"
+max="360"
+value={heading}
+onChange={(e) => setHeading(Number(e.target.value))}
+style={{ width: "100%" }}
+/>
+
+
+
+{/* Pitch */}
+<label>Pitch</label>
+<input
+type="range"
+min="-0.5"
+max="0.5"
+step="0.01"
+value={pitch}
+onChange={(e) => setPitch(Number(e.target.value))}
+style={{ width: "100%" }}
 />
 
 </div>
 
+
+
+{/* ================= REGION STATUS ================= */}
+{selectedRegion && (
+
+<div
+style={{
+marginTop: "20px",
+textAlign: "center",
+background: "#1e293b",
+color: "white",
+padding: "15px",
+borderRadius: "8px"
+}}
+>
+
+Aircraft approaching <b>{selectedRegion.name}</b>
+
+<br />
+
+Status: <b>{decision}</b>
+
 </div>
 
-  );
+)}
 
+</section>
+);
 }
