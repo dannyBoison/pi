@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, Sky, Cloud, useGLTF } from "@react-three/drei";
+import { Sky, Cloud, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 
 
@@ -19,46 +19,50 @@ function Plane({ planeRef, throttle, controls, setSpeed, setAltitude, setHeading
     // acceleration from throttle
     velocity.current += throttle * 0.0008;
 
-    // air drag
+    // drag
     velocity.current *= 0.992;
 
-    // forward movement
-    plane.translateZ(-velocity.current);
+    // FORWARD MOVEMENT (correct direction)
+    const forward = new THREE.Vector3(0,0,-1);
+    forward.applyQuaternion(plane.quaternion);
+    plane.position.add(forward.multiplyScalar(velocity.current * 5));
 
     setSpeed((velocity.current * 1200).toFixed(0));
 
-    // lift
+    // LIFT
     if (velocity.current > 0.02) {
       plane.position.y += velocity.current * 0.15;
     }
 
-    // gravity
+    // GRAVITY
     plane.position.y -= 0.002;
 
     setAltitude((plane.position.y * 100).toFixed(0));
 
-    // turning
+    // TURN LEFT
     if (controls.current.left) {
       plane.rotation.y += 0.02;
       plane.rotation.z = THREE.MathUtils.lerp(plane.rotation.z, 0.5, 0.1);
     }
 
+    // TURN RIGHT
     if (controls.current.right) {
       plane.rotation.y -= 0.02;
       plane.rotation.z = THREE.MathUtils.lerp(plane.rotation.z, -0.5, 0.1);
     }
 
+    // RESET ROLL
     if (!controls.current.left && !controls.current.right) {
       plane.rotation.z = THREE.MathUtils.lerp(plane.rotation.z, 0, 0.1);
     }
 
-    // climb
+    // CLIMB
     if (controls.current.up) {
       plane.position.y += 0.1;
       plane.rotation.x = THREE.MathUtils.lerp(plane.rotation.x, -0.4, 0.1);
     }
 
-    // descend
+    // DESCEND
     if (controls.current.down) {
       plane.position.y -= 0.1;
       plane.rotation.x = THREE.MathUtils.lerp(plane.rotation.x, 0.4, 0.1);
@@ -72,7 +76,11 @@ function Plane({ planeRef, throttle, controls, setSpeed, setAltitude, setHeading
 
   });
 
-  return <primitive ref={planeRef} object={gltf.scene} scale={0.5} />;
+  return (
+    <group ref={planeRef}>
+      <primitive object={gltf.scene} scale={0.5} />
+    </group>
+  );
 }
 
 
@@ -88,13 +96,12 @@ function FollowCamera({ planeRef }) {
 
     const plane = planeRef.current;
 
-    const desired = new THREE.Vector3(
-      plane.position.x,
-      plane.position.y + 4,
-      plane.position.z + 12
-    );
+    const offset = new THREE.Vector3(0,4,12);
+    offset.applyQuaternion(plane.quaternion);
 
-    camera.position.lerp(desired, 0.05);
+    const desired = plane.position.clone().add(offset);
+
+    camera.position.lerp(desired,0.05);
     camera.lookAt(plane.position);
 
   });
@@ -147,10 +154,12 @@ export default function AircraftSim() {
 
 
 
-  // keyboard controls
+  // KEYBOARD CONTROLS
   useEffect(()=>{
 
     const down = (e)=>{
+
+      e.preventDefault();
 
       if(e.key==="ArrowLeft") controls.current.left=true
       if(e.key==="ArrowRight") controls.current.right=true
@@ -203,8 +212,6 @@ setHeading={setHeading}
 />
 
 <FollowCamera planeRef={planeRef}/>
-
-<OrbitControls enablePan enableZoom enableRotate/>
 
 </Canvas>
 
@@ -297,4 +304,3 @@ style={{width:"200px"}}
   );
 
 }
-  
