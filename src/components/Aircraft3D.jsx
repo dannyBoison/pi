@@ -6,11 +6,9 @@ import * as THREE from "three";
 
 
 // ================= PLANE =================
-function Plane({ throttle, controls }) {
+function Plane({ planeRef, throttle, controls, setSpeed, setAltitude }) {
 
-  const planeRef = useRef();
   const velocity = useRef(0);
-
   const gltf = useGLTF("/models/product.glb");
 
   useFrame(() => {
@@ -19,36 +17,38 @@ function Plane({ throttle, controls }) {
 
     const plane = planeRef.current;
 
-    // acceleration
-    velocity.current += (throttle * 0.002);
+    // throttle acceleration
+    velocity.current += throttle * 0.0015;
 
     // drag
     velocity.current *= 0.995;
 
-    // forward movement
+    setSpeed((velocity.current * 800).toFixed(0));
+
+    // forward motion
     plane.translateZ(-velocity.current);
 
     // lift
     if (velocity.current > 0.02) {
-      plane.position.y += velocity.current * 0.2;
+      plane.position.y += velocity.current * 0.25;
     }
 
-    // descend slowly
-    plane.position.y -= 0.002;
+    // gravity
+    plane.position.y -= 0.003;
 
-    // turn left
+    setAltitude((plane.position.y * 100).toFixed(0));
+
+    // turning
     if (controls.current.left) {
       plane.rotation.y += 0.02;
       plane.rotation.z = THREE.MathUtils.lerp(plane.rotation.z, 0.4, 0.1);
     }
 
-    // turn right
     if (controls.current.right) {
       plane.rotation.y -= 0.02;
       plane.rotation.z = THREE.MathUtils.lerp(plane.rotation.z, -0.4, 0.1);
     }
 
-    // level wings
     if (!controls.current.left && !controls.current.right) {
       plane.rotation.z = THREE.MathUtils.lerp(plane.rotation.z, 0, 0.1);
     }
@@ -56,13 +56,13 @@ function Plane({ throttle, controls }) {
     // climb
     if (controls.current.up) {
       plane.rotation.x = THREE.MathUtils.lerp(plane.rotation.x, -0.3, 0.1);
-      plane.position.y += 0.1;
+      plane.position.y += 0.12;
     }
 
     // descend
     if (controls.current.down) {
       plane.rotation.x = THREE.MathUtils.lerp(plane.rotation.x, 0.3, 0.1);
-      plane.position.y -= 0.1;
+      plane.position.y -= 0.12;
     }
 
     if (!controls.current.up && !controls.current.down) {
@@ -76,24 +76,24 @@ function Plane({ throttle, controls }) {
 
 
 
-// ================= CAMERA FOLLOW =================
-function FollowCamera({ target }) {
+// ================= CAMERA =================
+function FollowCamera({ planeRef }) {
 
   const { camera } = useThree();
 
   useFrame(() => {
 
-    if (!target.current) return;
+    if (!planeRef.current) return;
 
-    const plane = target.current;
+    const plane = planeRef.current;
 
-    const desired = new THREE.Vector3(
+    const target = new THREE.Vector3(
       plane.position.x,
       plane.position.y + 3,
-      plane.position.z + 8
+      plane.position.z + 10
     );
 
-    camera.position.lerp(desired, 0.05);
+    camera.position.lerp(target, 0.05);
     camera.lookAt(plane.position);
 
   });
@@ -112,13 +112,13 @@ function World() {
     <group>
 
       <mesh rotation={[-Math.PI/2,0,0]} position={[0,-2,0]}>
-        <planeGeometry args={[5000,5000]}/>
-        <meshStandardMaterial color="#2c7a2c"/>
+        <planeGeometry args={[6000,6000]} />
+        <meshStandardMaterial color="#3a8f3a" />
       </mesh>
 
-      <Cloud position={[50,30,-100]} speed={0.2}/>
-      <Cloud position={[-120,25,-200]} speed={0.2}/>
-      <Cloud position={[200,40,-400]} speed={0.2}/>
+      <Cloud position={[80,35,-120]} speed={0.2}/>
+      <Cloud position={[-150,40,-300]} speed={0.2}/>
+      <Cloud position={[250,45,-500]} speed={0.2}/>
 
     </group>
 
@@ -131,6 +131,8 @@ function World() {
 // ================= MAIN =================
 export default function AircraftSim() {
 
+  const planeRef = useRef();
+
   const controls = useRef({
     left:false,
     right:false,
@@ -138,13 +140,13 @@ export default function AircraftSim() {
     down:false
   });
 
-  const planeRef = useRef();
+  const [throttle,setThrottle] = useState(0.4);
+  const [speed,setSpeed] = useState(0);
+  const [altitude,setAltitude] = useState(0);
 
-  const [throttle,setThrottle] = useState(0.3);
 
 
-
-  // keyboard controls
+  // keyboard
   const keyDown = (e)=>{
 
     if(e.key==="ArrowLeft") controls.current.left=true
@@ -171,12 +173,12 @@ export default function AircraftSim() {
 tabIndex={0}
 onKeyDown={keyDown}
 onKeyUp={keyUp}
-style={{width:"100%",height:"100vh"}}
+style={{width:"100%",height:"100vh",outline:"none"}}
 >
 
-<Canvas camera={{ position:[0,5,12], fov:60 }}>
+<Canvas camera={{ position:[0,6,15], fov:60 }}>
 
-<ambientLight intensity={0.6}/>
+<ambientLight intensity={0.7}/>
 <directionalLight position={[10,20,10]}/>
 
 <Sky sunPosition={[100,20,100]}/>
@@ -184,18 +186,16 @@ style={{width:"100%",height:"100vh"}}
 <World/>
 
 <Plane
-ref={planeRef}
+planeRef={planeRef}
 throttle={throttle}
 controls={controls}
+setSpeed={setSpeed}
+setAltitude={setAltitude}
 />
 
-<FollowCamera target={planeRef}/>
+<FollowCamera planeRef={planeRef}/>
 
-<OrbitControls
-enablePan
-enableZoom
-enableRotate
-/>
+<OrbitControls enablePan enableZoom enableRotate/>
 
 </Canvas>
 
@@ -208,24 +208,73 @@ top:"20px",
 left:"20px",
 background:"rgba(0,0,0,0.7)",
 color:"white",
-padding:"10px",
-borderRadius:"8px"
+padding:"12px",
+borderRadius:"8px",
+fontSize:"14px"
 }}>
-Throttle: {(throttle*100).toFixed(0)}%
+<div>Speed: {speed} km/h</div>
+<div>Altitude: {altitude} ft</div>
+<div>Throttle: {(throttle*100).toFixed(0)}%</div>
 </div>
 
 
 
-{/* THROTTLE */}
+{/* JOYSTICK CONTROLS */}
 <div style={{
 position:"absolute",
-bottom:"30px",
-left:"50%",
-transform:"translateX(-50%)",
-background:"rgba(0,0,0,0.8)",
+bottom:"40px",
+left:"40px",
+background:"rgba(0,0,0,0.75)",
 padding:"15px",
 borderRadius:"10px"
 }}>
+
+<button
+onMouseDown={()=>controls.current.left=true}
+onMouseUp={()=>controls.current.left=false}
+>
+⬅
+</button>
+
+<button
+onMouseDown={()=>controls.current.right=true}
+onMouseUp={()=>controls.current.right=false}
+>
+➡
+</button>
+
+<br/>
+
+<button
+onMouseDown={()=>controls.current.up=true}
+onMouseUp={()=>controls.current.up=false}
+>
+⬆
+</button>
+
+<button
+onMouseDown={()=>controls.current.down=true}
+onMouseUp={()=>controls.current.down=false}
+>
+⬇
+</button>
+
+</div>
+
+
+
+{/* THROTTLE LEVER */}
+<div style={{
+position:"absolute",
+bottom:"40px",
+right:"40px",
+background:"rgba(0,0,0,0.75)",
+padding:"15px",
+borderRadius:"10px",
+color:"white"
+}}>
+
+<div>Throttle</div>
 
 <input
 type="range"
@@ -234,7 +283,8 @@ max="1"
 step="0.01"
 value={throttle}
 onChange={(e)=>setThrottle(parseFloat(e.target.value))}
-style={{width:"300px"}}
+style={{height:"150px"}}
+orient="vertical"
 />
 
 </div>
