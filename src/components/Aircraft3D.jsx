@@ -3,7 +3,7 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls, useGLTF } from "@react-three/drei";
 
 
-// ================= PLANE MODEL ================
+// ================= PLANE MODEL ===============
 function PlaneModel({ heading, pitch }) {
 
 const gltf = useGLTF("/models/product.glb");
