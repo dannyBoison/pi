@@ -91,7 +91,7 @@ function Plane() {
   return (
     <group ref={planeRef} position={[0, 1, 0]}>
       {/* 🔥 YOUR MODEL */}
-      <primitive object={scene} scale={1.5} />
+      <primitive object={scene} scale={0.2} />
     </group>
   );
 }
