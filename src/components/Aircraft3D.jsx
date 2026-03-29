@@ -117,4 +117,3 @@ export default function App() {
 }
 
 
-I’ll debug it with you step-by-step like we’re building a real game engine 😎
