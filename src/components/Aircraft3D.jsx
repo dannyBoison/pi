@@ -77,9 +77,14 @@ function Plane() {
     }
 
     // ================= CAMERA FOLLOW =================
+    // Camera offset behind and above the plane
     const camOffset = new THREE.Vector3(0, 8, 20).applyQuaternion(plane.quaternion);
-    const camPos = plane.position.clone().add(camOffset);
-    camera.position.lerp(camPos, 0.08);
+    const camTarget = plane.position.clone().add(camOffset);
+
+    // Smooth lerp for smooth following
+    camera.position.lerp(camTarget, 0.08);
+
+    // Look at plane position
     camera.lookAt(plane.position);
   });
 
