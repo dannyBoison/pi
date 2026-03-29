@@ -115,39 +115,6 @@ export default function App() {
     </Canvas>
   );
 }
-What is this?
-✅ TEST THIS FIRST
 
-If this works:
-👉 You will see a box flying like a plane
-
-Then we know:
-✔ Physics works
-✔ Camera works
-✔ Controls work
-
-🔁 THEN ADD YOUR MODEL BACK
-
-Replace this part:
-
-<mesh ref={planeRef}>
-  <boxGeometry args={[1, 0.3, 2]} />
-</mesh>
-
-with:
-
-import { useGLTF } from "@react-three/drei";
-
-const { scene } = useGLTF("/models/product.glb");
-
-return <primitive ref={planeRef} object={scene} scale={1.5} />;
-🔥 If it STILL doesn’t work
-
-Tell me exactly what you see:
-
-Blank screen?
-Errors in console?
-Plane not moving?
-Camera stuck?
 
 I’ll debug it with you step-by-step like we’re building a real game engine 😎
