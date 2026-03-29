@@ -1,11 +1,14 @@
 import React, { useRef, useState, useEffect } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { useGLTF } from "@react-three/drei"; // ✅ ADD THIS
 import * as THREE from "three";
 
 // ================= PLANE =================
 function Plane() {
   const planeRef = useRef();
   const { camera } = useThree();
+
+  const { scene } = useGLTF("/models/product.glb"); // ✅ LOAD MODEL
 
   const velocity = useRef(new THREE.Vector3());
   const throttle = useRef(0);
@@ -35,14 +38,14 @@ function Plane() {
     throttle.current = THREE.MathUtils.clamp(throttle.current, 0, 10);
 
     // ================= ROTATION =================
-    if (keys["w"]) plane.rotation.x += 1.2 * delta; // pitch up
-    if (keys["s"]) plane.rotation.x -= 1.2 * delta; // pitch down
+    if (keys["w"]) plane.rotation.x += 1.2 * delta;
+    if (keys["s"]) plane.rotation.x -= 1.2 * delta;
 
-    if (keys["a"]) plane.rotation.z += 1.2 * delta; // roll left
-    if (keys["d"]) plane.rotation.z -= 1.2 * delta; // roll right
+    if (keys["a"]) plane.rotation.z += 1.2 * delta;
+    if (keys["d"]) plane.rotation.z -= 1.2 * delta;
 
-    if (keys["q"]) plane.rotation.y += 1.0 * delta; // yaw left
-    if (keys["e"]) plane.rotation.y -= 1.0 * delta; // yaw right
+    if (keys["q"]) plane.rotation.y += 1.0 * delta;
+    if (keys["e"]) plane.rotation.y -= 1.0 * delta;
 
     // ================= FORWARD =================
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
@@ -81,15 +84,15 @@ function Plane() {
 
     const targetPos = plane.position.clone().add(offset);
 
-    camera.position.lerp(targetPos, 0.1); // smooth follow
+    camera.position.lerp(targetPos, 0.1);
     camera.lookAt(plane.position);
   });
 
   return (
-    <mesh ref={planeRef} position={[0, 0, 0]}>
-      <boxGeometry args={[2, 0.5, 4]} />
-      <meshStandardMaterial color="orange" />
-    </mesh>
+    <group ref={planeRef} position={[0, 1, 0]}>
+      {/* 🔥 YOUR MODEL */}
+      <primitive object={scene} scale={1.5} />
+    </group>
   );
 }
 
@@ -120,6 +123,8 @@ export default function App() {
       camera={{ position: [0, 10, 25], fov: 70 }}
       style={{ width: "100vw", height: "100vh" }}
     >
+      <color attach="background" args={["skyblue"]} />
+
       {/* LIGHT */}
       <ambientLight intensity={0.6} />
       <directionalLight position={[100, 100, 50]} intensity={1.5} />
