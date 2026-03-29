@@ -29,7 +29,7 @@ function Plane() {
 
   useFrame((_, delta) => {
     const plane = planeRef.current;
-    plane.rotation.y += Math.PI;
+   
     if (!plane) return;
 
     // ================= THROTTLE =================
