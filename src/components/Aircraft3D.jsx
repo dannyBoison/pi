@@ -3,16 +3,16 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, Sky } from "@react-three/drei";
 import * as THREE from "three";
 
-// ================= PLANE =================
+// ================= PLANE COMPONENT =================
 function Plane() {
   const planeRef = useRef();
   const { camera } = useThree();
 
   const { scene } = useGLTF("/models/product.glb");
 
-  const velocity = useRef(new THREE.Vector3());
+  // Physics states
+  const velocity = useRef(new THREE.Vector3(0, 0, 0));
   const throttle = useRef(0);
-  const speed = useRef(0);
   const [keys, setKeys] = useState({});
 
   useEffect(() => {
@@ -33,70 +33,58 @@ function Plane() {
     if (!plane) return;
 
     // ================= THROTTLE =================
-    if (keys["shift"]) throttle.current += 3 * delta;
-    if (keys["control"]) throttle.current -= 3 * delta;
+    if (keys["shift"]) throttle.current += 5 * delta; // increase speed
+    if (keys["control"]) throttle.current -= 5 * delta; // decrease speed
+    throttle.current = THREE.MathUtils.clamp(throttle.current, 0, 50);
 
-    throttle.current = THREE.MathUtils.clamp(throttle.current, 0, 20);
+    // ================= ROTATION CONTROLS =================
+    const rotationSpeed = 1.0 * delta;
+    if (keys["w"]) plane.rotation.x += rotationSpeed; // pitch up
+    if (keys["s"]) plane.rotation.x -= rotationSpeed; // pitch down
+    if (keys["a"]) plane.rotation.z += rotationSpeed; // roll left
+    if (keys["d"]) plane.rotation.z -= rotationSpeed; // roll right
+    if (keys["q"]) plane.rotation.y += rotationSpeed; // yaw left
+    if (keys["e"]) plane.rotation.y -= rotationSpeed; // yaw right
 
-    // ================= SPEED BUILD-UP =================
-    speed.current += (throttle.current - speed.current) * 0.02;
+    // ================= FORWARD MOVEMENT =================
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quaternion);
+    const forwardVelocity = forward.clone().multiplyScalar(throttle.current * delta);
+    velocity.current.add(forwardVelocity);
 
-    // ================= ROTATION =================
-    if (keys["w"]) plane.rotation.x += 0.8 * delta;
-    if (keys["s"]) plane.rotation.x -= 0.8 * delta;
-
-    if (keys["a"]) plane.rotation.z += 1.2 * delta;
-    if (keys["d"]) plane.rotation.z -= 1.2 * delta;
-
-    if (keys["q"]) plane.rotation.y += 0.8 * delta;
-    if (keys["e"]) plane.rotation.y -= 0.8 * delta;
-
-    // ================= FORWARD =================
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
-      plane.quaternion
-    );
-
-    velocity.current.add(forward.multiplyScalar(speed.current * delta * 10));
-
-    // ================= TAKEOFF LOGIC =================
+    // ================= LIFT =================
+    // Lift only starts when plane speed > threshold (like takeoff)
+    const speedMagnitude = velocity.current.length();
     let lift = 0;
-
-    if (speed.current > 8) {
-      lift =
-        Math.sin(-plane.rotation.x) *
-        speed.current *
-        0.8;
+    const takeoffSpeed = 10; // speed needed to lift
+    if (speedMagnitude > takeoffSpeed) {
+      lift = Math.max(0, Math.sin(-plane.rotation.x)) * speedMagnitude * 0.5;
     }
 
     velocity.current.y += lift * delta;
 
     // ================= GRAVITY =================
-    velocity.current.y -= 5 * delta;
+    velocity.current.y -= 9.8 * delta * 0.5; // simple gravity
 
     // ================= DRAG =================
     velocity.current.multiplyScalar(0.99);
 
-    // ================= MOVE =================
+    // ================= MOVE PLANE =================
     plane.position.add(velocity.current);
 
-    // ================= GROUND BEHAVIOR =================
-    if (plane.position.y <= 0) {
+    // ================= GROUND COLLISION =================
+    if (plane.position.y < 0) {
       plane.position.y = 0;
       velocity.current.y = 0;
 
-      // prevent lift if not fast enough
-      if (speed.current < 8) {
+      // Keep plane flat on ground if taxiing
+      if (speedMagnitude < takeoffSpeed) {
         plane.rotation.x = 0;
       }
     }
 
-    // ================= CAMERA =================
-    const offset = new THREE.Vector3(0, 6, 25).applyQuaternion(
-      plane.quaternion
-    );
-
-    const camPos = plane.position.clone().add(offset);
-
+    // ================= CAMERA FOLLOW =================
+    const cameraOffset = new THREE.Vector3(0, 8, 25).applyQuaternion(plane.quaternion);
+    const camPos = plane.position.clone().add(cameraOffset);
     camera.position.lerp(camPos, 0.08);
     camera.lookAt(plane.position);
   });
@@ -108,12 +96,12 @@ function Plane() {
   );
 }
 
-// ================= BETTER GROUND =================
+// ================= GROUND =================
 function Ground() {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[200000, 200000]} />
-      <meshStandardMaterial color="#6c9a4f" />
+      <planeGeometry args={[2000, 10000]} />
+      <meshStandardMaterial color="#4c7c3a" />
     </mesh>
   );
 }
@@ -122,20 +110,20 @@ function Ground() {
 function Runway() {
   return (
     <group>
-      {/* runway */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[120, 4000]} />
-        <meshStandardMaterial color="#1f1f1f" />
+      {/* Main runway */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
+        <planeGeometry args={[20, 500]} />
+        <meshStandardMaterial color="#222" />
       </mesh>
 
-      {/* center stripes */}
-      {[...Array(80)].map((_, i) => (
+      {/* Runway center line */}
+      {[...Array(25)].map((_, i) => (
         <mesh
           key={i}
           rotation={[-Math.PI / 2, 0, 0]}
-          position={[0, 0.02, -1800 + i * 50]}
+          position={[0, 0.02, -240 + i * 20]}
         >
-          <planeGeometry args={[6, 25]} />
+          <planeGeometry args={[1, 15]} />
           <meshStandardMaterial color="white" />
         </mesh>
       ))}
@@ -146,25 +134,18 @@ function Runway() {
 // ================= APP =================
 export default function App() {
   return (
-    <Canvas
-      camera={{ position: [0, 15, 40], fov: 75 }}
-      style={{ width: "100vw", height: "100vh" }}
-    >
-      {/* SKY */}
+    <Canvas camera={{ position: [0, 10, 40], fov: 75 }} style={{ width: "100vw", height: "100vh" }}>
+      {/* SKY & LIGHT */}
       <Sky sunPosition={[100, 50, 100]} turbidity={10} />
+      <ambientLight intensity={0.5} />
+      <directionalLight position={[100, 200, 50]} intensity={1.5} />
 
       {/* FOG */}
-      <fog attach="fog" args={["#cce7ff", 500, 50000]} />
-
-      {/* LIGHT */}
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[200, 300, 100]} intensity={2} />
+      <fog attach="fog" args={["#cce7ff", 200, 2000]} />
 
       {/* WORLD */}
       <Ground />
       <Runway />
-
-      {/* PLANE */}
       <Plane />
     </Canvas>
   );
