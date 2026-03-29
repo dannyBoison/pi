@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei"; // ✅ ADD THIS
+import { useGLTF, Sky } from "@react-three/drei";
 import * as THREE from "three";
 
 // ================= PLANE =================
@@ -8,7 +8,7 @@ function Plane() {
   const planeRef = useRef();
   const { camera } = useThree();
 
-  const { scene } = useGLTF("/models/product.glb"); // ✅ LOAD MODEL
+  const { scene } = useGLTF("/models/product.glb");
 
   const velocity = useRef(new THREE.Vector3());
   const throttle = useRef(0);
@@ -29,14 +29,12 @@ function Plane() {
 
   useFrame((_, delta) => {
     const plane = planeRef.current;
-   
     if (!plane) return;
 
     // ================= THROTTLE =================
     if (keys["shift"]) throttle.current += 2 * delta;
     if (keys["control"]) throttle.current -= 2 * delta;
-
-    throttle.current = THREE.MathUtils.clamp(throttle.current, 0, 10);
+    throttle.current = THREE.MathUtils.clamp(throttle.current, 0, 12);
 
     // ================= ROTATION =================
     if (keys["w"]) plane.rotation.x += 1.2 * delta;
@@ -48,18 +46,19 @@ function Plane() {
     if (keys["q"]) plane.rotation.y += 1.0 * delta;
     if (keys["e"]) plane.rotation.y -= 1.0 * delta;
 
-    // ================= FORWARD =================
+    // ================= FIX DIRECTION =================
+    // Make plane face forward (VERY IMPORTANT)
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
       plane.quaternion
     );
 
-    velocity.current.add(forward.multiplyScalar(throttle.current * delta * 20));
+    velocity.current.add(forward.multiplyScalar(throttle.current * delta * 25));
 
     // ================= LIFT =================
     const lift =
       Math.max(0, throttle.current) *
       Math.sin(-plane.rotation.x) *
-      5;
+      6;
 
     velocity.current.y += lift * delta;
 
@@ -78,42 +77,57 @@ function Plane() {
       velocity.current.y = 0;
     }
 
-    // ================= CAMERA FOLLOW =================
-    const offset = new THREE.Vector3(0, 6, 18).applyQuaternion(
+    // ================= CAMERA =================
+    const offset = new THREE.Vector3(0, 5, 20).applyQuaternion(
       plane.quaternion
     );
 
-    const targetPos = plane.position.clone().add(offset);
+    const target = plane.position.clone().add(offset);
 
-    camera.position.lerp(targetPos, 0.1);
+    camera.position.lerp(target, 0.08);
     camera.lookAt(plane.position);
   });
 
   return (
     <group ref={planeRef} position={[0, 1, 0]}>
-      {/* 🔥 YOUR MODEL */}
-      <primitive object={scene} scale={0.2} />
+      {/* 🔥 ROTATE MODEL TO FACE FORWARD */}
+      <primitive object={scene} scale={0.2} rotation={[0, Math.PI, 0]} />
     </group>
   );
 }
 
-// ================= HUGE GROUND =================
+// ================= REALISTIC GROUND =================
 function Ground() {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[50000, 50000]} />
-      <meshStandardMaterial color="#3a7d44" />
+      <planeGeometry args={[100000, 100000]} />
+      <meshStandardMaterial color="#4c7c3a" />
     </mesh>
   );
 }
 
-// ================= RUNWAY =================
+// ================= RUNWAY WITH MARKINGS =================
 function Runway() {
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
-      <planeGeometry args={[80, 2000]} />
-      <meshStandardMaterial color="black" />
-    </mesh>
+    <group>
+      {/* Runway */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
+        <planeGeometry args={[100, 3000]} />
+        <meshStandardMaterial color="#222" />
+      </mesh>
+
+      {/* Center line */}
+      {[...Array(50)].map((_, i) => (
+        <mesh
+          key={i}
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[0, 0.03, -1400 + i * 60]}
+        >
+          <planeGeometry args={[5, 30]} />
+          <meshStandardMaterial color="white" />
+        </mesh>
+      ))}
+    </group>
   );
 }
 
@@ -121,14 +135,18 @@ function Runway() {
 export default function App() {
   return (
     <Canvas
-      camera={{ position: [0, 10, 25], fov: 70 }}
+      camera={{ position: [0, 10, 30], fov: 70 }}
       style={{ width: "100vw", height: "100vh" }}
     >
-      <color attach="background" args={["skyblue"]} />
+      {/* SKY */}
+      <Sky sunPosition={[100, 20, 100]} />
+
+      {/* FOG (DEPTH FEEL) */}
+      <fog attach="fog" args={["#bcdff5", 200, 20000]} />
 
       {/* LIGHT */}
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[100, 100, 50]} intensity={1.5} />
+      <ambientLight intensity={0.5} />
+      <directionalLight position={[100, 200, 100]} intensity={1.5} />
 
       {/* WORLD */}
       <Ground />
