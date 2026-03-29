@@ -1,190 +1,102 @@
-import React, { useState } from "react";
-import { Canvas } from "@react-three/fiber";
+import React, { useRef, useState, useEffect } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, useGLTF } from "@react-three/drei";
-
+import * as THREE from "three";
 
 // ================= PLANE MODEL ===============
-function PlaneModel({ heading, pitch }) {
+function PlaneModel() {
+  const { scene } = useGLTF("/models/product.glb");
+  const planeRef = useRef();
 
-const gltf = useGLTF("/models/product.glb");
+  const velocity = useRef(new THREE.Vector3(0, 0, 0));
+  const rotation = useRef(new THREE.Vector3(0, 0, 0));
 
-return (
-<primitive
-object={gltf.scene}
-scale={0.5}
-rotation={[pitch, heading, 0]}
-/>
-);
+  const [keys, setKeys] = useState({});
+  const throttle = useRef(0);
+
+  // ================= CONTROLS =================
+  useEffect(() => {
+    const down = (e) => setKeys((k) => ({ ...k, [e.key.toLowerCase()]: true }));
+    const up = (e) => setKeys((k) => ({ ...k, [e.key.toLowerCase()]: false }));
+
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }, []);
+
+  // ================= FLIGHT PHYSICS =================
+  useFrame((_, delta) => {
+    if (!planeRef.current) return;
+
+    // THROTTLE CONTROL
+    if (keys["shift"]) throttle.current += 0.5 * delta;
+    if (keys["control"]) throttle.current -= 0.5 * delta;
+
+    throttle.current = THREE.MathUtils.clamp(throttle.current, 0, 2);
+
+    // ROTATION CONTROLS
+    if (keys["w"]) rotation.current.x += 0.8 * delta; // pitch up
+    if (keys["s"]) rotation.current.x -= 0.8 * delta; // pitch down
+
+    if (keys["a"]) rotation.current.z += 0.8 * delta; // roll left
+    if (keys["d"]) rotation.current.z -= 0.8 * delta; // roll right
+
+    if (keys["q"]) rotation.current.y += 0.6 * delta; // yaw left
+    if (keys["e"]) rotation.current.y -= 0.6 * delta; // yaw right
+
+    // APPLY ROTATION
+    planeRef.current.rotation.x += rotation.current.x * delta;
+    planeRef.current.rotation.y += rotation.current.y * delta;
+    planeRef.current.rotation.z += rotation.current.z * delta;
+
+    // DAMP ROTATION (smooth)
+    rotation.current.multiplyScalar(0.95);
+
+    // FORWARD DIRECTION
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
+      planeRef.current.quaternion
+    );
+
+    // LIFT (when moving forward)
+    const lift = throttle.current * Math.max(0, Math.sin(-planeRef.current.rotation.x));
+
+    // APPLY VELOCITY
+    velocity.current.add(forward.multiplyScalar(throttle.current * delta * 5));
+    velocity.current.y += lift * delta * 2;
+
+    // GRAVITY
+    velocity.current.y -= 1.5 * delta;
+
+    // DRAG (slow down naturally)
+    velocity.current.multiplyScalar(0.99);
+
+    // MOVE PLANE
+    planeRef.current.position.add(velocity.current);
+
+    // GROUND (landing)
+    if (planeRef.current.position.y < 0) {
+      planeRef.current.position.y = 0;
+      velocity.current.y = 0;
+    }
+  });
+
+  return <primitive ref={planeRef} object={scene} scale={1} />;
 }
 
+// ================= SCENE =================
+export default function App() {
+  return (
+    <Canvas camera={{ position: [0, 3, 10], fov: 60 }}>
+      <ambientLight intensity={1} />
+      <directionalLight position={[5, 10, 5]} />
 
+      <PlaneModel />
 
-// ================= MAIN SIMULATOR =================
-export default function Aircraft3D({ selectedRegion, decision }) {
-
-const [throttle, setThrottle] = useState(40);
-const [altitude, setAltitude] = useState(12000);
-const [heading, setHeading] = useState(0);
-const [pitch, setPitch] = useState(0);
-
-
-
-return (
-<section
-style={{
-width: "90%",
-margin: "40px auto",
-fontFamily: "sans-serif"
-}}
->
-
-{/* ================= HUD ================= */}
-<div
-style={{
-background: "#0f172a",
-color: "white",
-padding: "15px",
-borderRadius: "10px",
-marginBottom: "20px",
-display: "flex",
-justifyContent: "space-around"
-}}
->
-
-<div>
-<h4>Throttle</h4>
-<p>{throttle}%</p>
-</div>
-
-<div>
-<h4>Altitude</h4>
-<p>{altitude} ft</p>
-</div>
-
-<div>
-<h4>Heading</h4>
-<p>{heading}°</p>
-</div>
-
-<div>
-<h4>Pitch</h4>
-<p>{pitch.toFixed(2)}</p>
-</div>
-
-</div>
-
-
-
-{/* ================= 3D VIEW ================= */}
-<div style={{ height: "420px", width: "100%" }}>
-
-<Canvas camera={{ position: [0, 2, 6] }}>
-
-<ambientLight intensity={0.5} />
-<directionalLight position={[10, 10, 5]} intensity={1} />
-
-<PlaneModel heading={heading} pitch={pitch} />
-
-<OrbitControls />
-
-</Canvas>
-
-</div>
-
-
-
-{/* ================= FLIGHT CONTROLS ================= */}
-<div
-style={{
-marginTop: "25px",
-background: "#e5e7eb",
-padding: "20px",
-borderRadius: "10px"
-}}
->
-
-<h3>Flight Controls</h3>
-
-{/* Throttle */}
-<label>Throttle</label>
-<input
-type="range"
-min="0"
-max="100"
-value={throttle}
-onChange={(e) => setThrottle(Number(e.target.value))}
-style={{ width: "100%" }}
-/>
-
-
-
-{/* Altitude */}
-<label>Altitude</label>
-<input
-type="range"
-min="1000"
-max="40000"
-step="500"
-value={altitude}
-onChange={(e) => setAltitude(Number(e.target.value))}
-style={{ width: "100%" }}
-/>
-
-
-
-{/* Heading */}
-<label>Heading</label>
-<input
-type="range"
-min="0"
-max="360"
-value={heading}
-onChange={(e) => setHeading(Number(e.target.value))}
-style={{ width: "100%" }}
-/>
-
-
-
-{/* Pitch */}
-<label>Pitch</label>
-<input
-type="range"
-min="-0.5"
-max="0.5"
-step="0.01"
-value={pitch}
-onChange={(e) => setPitch(Number(e.target.value))}
-style={{ width: "100%" }}
-/>
-
-</div>
-
-
-
-{/* ================= REGION STATUS ================= */}
-{selectedRegion && (
-
-<div
-style={{
-marginTop: "20px",
-textAlign: "center",
-background: "#1e293b",
-color: "white",
-padding: "15px",
-borderRadius: "8px"
-}}
->
-
-Aircraft approaching <b>{selectedRegion.name}</b>
-
-<br />
-
-Status: <b>{decision}</b>
-
-</div>
-
-)}
-
-</section>
-);
+      <OrbitControls />
+    </Canvas>
+  );
 }
