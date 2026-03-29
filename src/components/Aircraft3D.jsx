@@ -10,15 +10,13 @@ function Plane() {
 
   const { scene } = useGLTF("/models/product.glb");
 
-  // PHYSICS STATES
   const velocity = useRef(new THREE.Vector3(0, 0, 0));
   const [throttle, setThrottle] = useState(0);
   const [keys, setKeys] = useState({});
 
-  const maxThrottle = 50; // max forward speed
-  const liftThreshold = 5; // min speed to start lifting
+  const maxThrottle = 50;
+  const liftThreshold = 10;
 
-  // KEY HANDLERS
   useEffect(() => {
     const down = (e) => setKeys((k) => ({ ...k, [e.key.toLowerCase()]: true }));
     const up = (e) => setKeys((k) => ({ ...k, [e.key.toLowerCase()]: false }));
@@ -37,19 +35,19 @@ function Plane() {
     if (!plane) return;
 
     // ================= THROTTLE =================
-    if (keys["shift"]) setThrottle((t) => Math.min(t + 20 * delta, maxThrottle));
-    if (keys["control"]) setThrottle((t) => Math.max(t - 20 * delta, 0));
+    if (keys["w"]) setThrottle((t) => Math.min(t + 30 * delta, maxThrottle));
+    if (keys["s"]) setThrottle((t) => Math.max(t - 30 * delta, 0));
 
-    // ================= ROTATION CONTROLS =================
-    const rotSpeed = 1.2 * delta;
-    if (keys["w"]) plane.rotation.x += rotSpeed; // pitch up
-    if (keys["s"]) plane.rotation.x -= rotSpeed; // pitch down
+    // ================= ROTATION =================
+    const rotSpeed = 1.5 * delta;
     if (keys["a"]) plane.rotation.z += rotSpeed; // roll left
     if (keys["d"]) plane.rotation.z -= rotSpeed; // roll right
     if (keys["q"]) plane.rotation.y += rotSpeed; // yaw left
     if (keys["e"]) plane.rotation.y -= rotSpeed; // yaw right
+    if (keys["arrowup"]) plane.rotation.x += rotSpeed; // pitch up
+    if (keys["arrowdown"]) plane.rotation.x -= rotSpeed; // pitch down
 
-    // ================= FORWARD VELOCITY =================
+    // ================= FORWARD =================
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quaternion);
     const forwardVelocity = forward.clone().multiplyScalar(throttle * delta);
     velocity.current.add(forwardVelocity);
@@ -58,16 +56,15 @@ function Plane() {
     const speed = velocity.current.length();
     let lift = 0;
     if (speed > liftThreshold) {
-      // Only apply lift if moving fast enough
-      lift = Math.max(0, Math.sin(-plane.rotation.x)) * speed * 0.6;
+      lift = Math.sin(-plane.rotation.x) * speed * 0.3;
     }
     velocity.current.y += lift * delta;
 
     // ================= GRAVITY =================
-    velocity.current.y -= 9.8 * delta * 0.5;
+    velocity.current.y -= 9.8 * delta * 0.3;
 
     // ================= DRAG =================
-    velocity.current.multiplyScalar(0.99);
+    velocity.current.multiplyScalar(0.98);
 
     // ================= MOVE PLANE =================
     plane.position.add(velocity.current);
@@ -76,12 +73,11 @@ function Plane() {
     if (plane.position.y < 0) {
       plane.position.y = 0;
       velocity.current.y = 0;
-      // Keep plane flat on ground if taxiing
       if (speed < liftThreshold) plane.rotation.x = 0;
     }
 
     // ================= CAMERA FOLLOW =================
-    const camOffset = new THREE.Vector3(0, 8, 25).applyQuaternion(plane.quaternion);
+    const camOffset = new THREE.Vector3(0, 8, 20).applyQuaternion(plane.quaternion);
     const camPos = plane.position.clone().add(camOffset);
     camera.position.lerp(camPos, 0.08);
     camera.lookAt(plane.position);
@@ -108,7 +104,7 @@ function Ground() {
 function Runway() {
   return (
     <group>
-      {/* Main runway */}
+      {/* Runway */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
         <planeGeometry args={[20, 500]} />
         <meshStandardMaterial color="#222" />
@@ -141,9 +137,6 @@ export default function App() {
       <Ground />
       <Runway />
       <Plane />
-
-      {/* THROTTLE INFO */}
-      {/* Optional: you can render throttle UI later */}
     </Canvas>
   );
 }
