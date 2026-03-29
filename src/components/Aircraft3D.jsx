@@ -1,12 +1,13 @@
 import React, { useRef, useState, useEffect } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, useGLTF } from "@react-three/drei";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { useGLTF, Sky } from "@react-three/drei";
 import * as THREE from "three";
 
 // ================= PLANE MODEL ===============
 function PlaneModel() {
   const { scene } = useGLTF("/models/product.glb");
   const planeRef = useRef();
+  const { camera } = useThree();
 
   const velocity = useRef(new THREE.Vector3(0, 0, 0));
   const rotation = useRef(new THREE.Vector3(0, 0, 0));
@@ -14,7 +15,7 @@ function PlaneModel() {
   const [keys, setKeys] = useState({});
   const throttle = useRef(0);
 
-  // ================= CONTROLS =================
+  // CONTROLS
   useEffect(() => {
     const down = (e) => setKeys((k) => ({ ...k, [e.key.toLowerCase()]: true }));
     const up = (e) => setKeys((k) => ({ ...k, [e.key.toLowerCase()]: false }));
@@ -28,75 +29,111 @@ function PlaneModel() {
     };
   }, []);
 
-  // ================= FLIGHT PHYSICS =================
   useFrame((_, delta) => {
     if (!planeRef.current) return;
 
-    // THROTTLE CONTROL
+    // THROTTLE
     if (keys["shift"]) throttle.current += 0.5 * delta;
     if (keys["control"]) throttle.current -= 0.5 * delta;
+    throttle.current = THREE.MathUtils.clamp(throttle.current, 0, 3);
 
-    throttle.current = THREE.MathUtils.clamp(throttle.current, 0, 2);
+    // ROTATION
+    if (keys["w"]) rotation.current.x += 0.8 * delta;
+    if (keys["s"]) rotation.current.x -= 0.8 * delta;
 
-    // ROTATION CONTROLS
-    if (keys["w"]) rotation.current.x += 0.8 * delta; // pitch up
-    if (keys["s"]) rotation.current.x -= 0.8 * delta; // pitch down
+    if (keys["a"]) rotation.current.z += 0.8 * delta;
+    if (keys["d"]) rotation.current.z -= 0.8 * delta;
 
-    if (keys["a"]) rotation.current.z += 0.8 * delta; // roll left
-    if (keys["d"]) rotation.current.z -= 0.8 * delta; // roll right
+    if (keys["q"]) rotation.current.y += 0.6 * delta;
+    if (keys["e"]) rotation.current.y -= 0.6 * delta;
 
-    if (keys["q"]) rotation.current.y += 0.6 * delta; // yaw left
-    if (keys["e"]) rotation.current.y -= 0.6 * delta; // yaw right
-
-    // APPLY ROTATION
     planeRef.current.rotation.x += rotation.current.x * delta;
     planeRef.current.rotation.y += rotation.current.y * delta;
     planeRef.current.rotation.z += rotation.current.z * delta;
 
-    // DAMP ROTATION (smooth)
     rotation.current.multiplyScalar(0.95);
 
-    // FORWARD DIRECTION
+    // FORWARD
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
       planeRef.current.quaternion
     );
 
-    // LIFT (when moving forward)
-    const lift = throttle.current * Math.max(0, Math.sin(-planeRef.current.rotation.x));
+    const lift =
+      throttle.current *
+      Math.max(0, Math.sin(-planeRef.current.rotation.x));
 
-    // APPLY VELOCITY
-    velocity.current.add(forward.multiplyScalar(throttle.current * delta * 5));
-    velocity.current.y += lift * delta * 2;
+    velocity.current.add(forward.multiplyScalar(throttle.current * delta * 10));
+    velocity.current.y += lift * delta * 3;
 
-    // GRAVITY
     velocity.current.y -= 1.5 * delta;
+    velocity.current.multiplyScalar(0.995);
 
-    // DRAG (slow down naturally)
-    velocity.current.multiplyScalar(0.99);
-
-    // MOVE PLANE
     planeRef.current.position.add(velocity.current);
 
-    // GROUND (landing)
+    // GROUND
     if (planeRef.current.position.y < 0) {
       planeRef.current.position.y = 0;
       velocity.current.y = 0;
     }
+
+    // 🎥 FOLLOW CAMERA
+    const camOffset = new THREE.Vector3(0, 3, 10)
+      .applyQuaternion(planeRef.current.quaternion);
+
+    camera.position.copy(
+      planeRef.current.position.clone().add(camOffset)
+    );
+
+    camera.lookAt(planeRef.current.position);
   });
 
-  return <primitive ref={planeRef} object={scene} scale={1} />;
+  return (
+    <primitive
+      ref={planeRef}
+      object={scene}
+      scale={1.5}
+      position={[0, 0, 0]}
+    />
+  );
+}
+
+// ================= GROUND =================
+function Ground() {
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
+      <planeGeometry args={[10000, 10000]} />
+      <meshStandardMaterial color="#3b7d3b" />
+    </mesh>
+  );
+}
+
+// ================= RUNWAY =================
+function Runway() {
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
+      <planeGeometry args={[50, 1000]} />
+      <meshStandardMaterial color="black" />
+    </mesh>
+  );
 }
 
 // ================= SCENE =================
 export default function App() {
   return (
-    <Canvas camera={{ position: [0, 3, 10], fov: 60 }}>
-      <ambientLight intensity={1} />
-      <directionalLight position={[5, 10, 5]} />
+    <Canvas camera={{ position: [0, 5, 15], fov: 60 }}>
+      {/* LIGHT */}
+      <ambientLight intensity={0.5} />
+      <directionalLight position={[100, 100, 50]} intensity={1} />
 
+      {/* SKY */}
+      <Sky sunPosition={[100, 20, 100]} />
+
+      {/* WORLD */}
+      <Ground />
+      <Runway />
+
+      {/* PLANE */}
       <PlaneModel />
-
-      <OrbitControls />
     </Canvas>
   );
 }
