@@ -1,65 +1,23 @@
-import { Buffer } from "buffer";
+// server.js
+import express from "express";
+import fetch from "node-fetch";
+import cors from "cors";
 
-// Cache variables
-let cachedData = null;
-let lastFetch = 0;
+const app = express();
+app.use(cors());
 
-// Fetch OpenSky data and update cache
-const fetchOpenSky = async () => {
-  const username = "danny1to10";
-  const password = "@4smYJRnjFzc2gx";
-
-  const auth = "Basic " + Buffer.from(`${username}:${password}`).toString("base64");
-
+app.get("/api/flights", async (req, res) => {
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const response = await fetch(
+      "https://opensky-network.org/api/states/all?lamin=-40&lomin=-20&lamax=38&lomax=55"
+    );
 
-    const res = await fetch("https://opensky-network.org/api/states/all", {
-      headers: {
-        Authorization: auth,
-        "User-Agent": "Mozilla/5.0"
-      },
-      signal: controller.signal
-    });
-
-    clearTimeout(timeout);
-
-    if (!res.ok) {
-      const text = await res.text();
-      console.error("OpenSky API error:", text);
-      return; // do not update cache if error
-    }
-
-    let data;
-    try {
-      data = await res.json();
-    } catch (err) {
-      const text = await res.text();
-      console.error("Invalid JSON from OpenSky:", text);
-      return;
-    }
-
-    cachedData = data;
-    lastFetch = Date.now();
+    const data = await response.json();
+    res.json(data);
 
   } catch (err) {
-    console.error("OpenSky fetch error:", err);
+    res.status(500).json({ error: "Failed to fetch flights" });
   }
-};
+});
 
-// Initial fetch
-fetchOpenSky();
-
-// Refresh cache every 30 seconds
-setInterval(fetchOpenSky, 30000);
-
-// Handler
-export default async function handler(req, res) {
-  if (!cachedData) {
-    return res.status(503).json({ error: "Data not ready yet, try again in a few seconds" });
-  }
-
-  res.setHeader("Content-Type", "application/json");
-  res.status(200).json(cachedData);
-}
+app.listen(5000, () => console.log("Server running"));
