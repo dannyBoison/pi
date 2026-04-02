@@ -1,23 +1,24 @@
-// server.js
-import express from "express";
-import fetch from "node-fetch";
-import cors from "cors";
-
-const app = express();
-app.use(cors());
-
-app.get("/api/flights", async (req, res) => {
+export async function handler() {
   try {
-    const response = await fetch(
+    const res = await fetch(
       "https://opensky-network.org/api/states/all?lamin=-40&lomin=-20&lamax=38&lomax=55"
     );
 
-    const data = await response.json();
-    res.json(data);
+    const data = await res.json();
 
-  } catch (err) {
-    res.status(500).json({ error: "Failed to fetch flights" });
+    return {
+      statusCode: 200,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(data)
+    };
+
+  } catch (error) {
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: "Failed to fetch flights" })
+    };
   }
-});
-
-app.listen(5000, () => console.log("Server running"));
+}
