@@ -184,8 +184,12 @@ export default function MapPanel() {
   // ================= OPENSKY FLIGHTS (AFRICA FILTER) =================
 const fetchFlights = async () => {
   try {
+    const res = await fetch("/api/flights");
 
-    const res = await fetch("/api/flights"); // ✅ SAME DOMAIN
+    if (!res.ok) {
+      console.error("Failed to fetch flights");
+      return;
+    }
 
     const data = await res.json();
 
@@ -193,7 +197,7 @@ const fetchFlights = async () => {
       ?.filter(p => p[5] && p[6])
       .map(p => ({
         icao: p[0],
-        callsign: p[1]?.trim() || "N/A",
+        callsign: p[1],
         lng: p[5],
         lat: p[6],
         altitude: p[7],
@@ -203,7 +207,7 @@ const fetchFlights = async () => {
 
     setLivePlanes(planes);
 
-    // ✈️ trails
+    // trails
     setPlaneTrails(prev => {
       const updated = { ...prev };
 
@@ -223,9 +227,10 @@ const fetchFlights = async () => {
     setLastUpdated(new Date().toLocaleTimeString());
 
   } catch (err) {
-    console.error("Flight fetch error:", err);
+    console.error("Fetch error:", err);
   }
 };
+
 
 
 
