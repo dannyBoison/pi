@@ -1,24 +1,25 @@
-export async function handler() {
+export default async function handler(req: any, res: any) {
   try {
-    const res = await fetch(
+    const response = await fetch(
       "https://opensky-network.org/api/states/all?lamin=-40&lomin=-20&lamax=38&lomax=55"
     );
 
-    const data = await res.json();
+    if (!response.ok) {
+      return res.status(500).json({ error: "OpenSky API failed" });
+    }
 
-    return {
-      statusCode: 200,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(data)
-    };
+    const data = await response.json();
+
+    res.setHeader("Access-Control-Allow-Origin", "*");
+
+    return res.status(200).json(data);
 
   } catch (error) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: "Failed to fetch flights" })
-    };
+    console.error("SERVER ERROR:", error);
+
+    return res.status(500).json({
+      error: "Failed to fetch flights",
+      details: error.message
+    });
   }
 }
