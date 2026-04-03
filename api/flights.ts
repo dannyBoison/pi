@@ -1,42 +1,26 @@
-export default async function handler(req, res) {
+export default async function handler(req: any, res: any) {
   try {
-
-    const username = "Danny1to10";
-    const password = "@4smYJRnjFzc2gx";
-
-    const auth = btoa(`${username}:${password}`);
-
-    const response = await fetch("https://opensky-network.org/api/states/all", {
-      headers: {
-        Authorization: `Basic ${auth}`
-      }
-    });
+    const response = await fetch(
+      "https://opensky-network.org/api/states/all?lamin=-40&lomin=-20&lamax=38&lomax=55"
+    );
 
     if (!response.ok) {
-      const text = await response.text();
-      console.error("OpenSky error:", text);
-
-      return res.status(500).json({
-        error: "OpenSky request failed",
-        details: text
-      });
+      return res.status(500).json({ error: "OpenSky API failed" });
     }
 
     const data = await response.json();
 
-    return res.status(200).json({
-      timestamp: new Date().toISOString(),
-      data
-    });
+    res.setHeader("Access-Control-Allow-Origin", "*");
 
-  } catch (err) {
+    return res.status(200).json(data);
 
-    console.error("Server error:", err);
+  } catch (error) {
+    console.error("SERVER ERROR:", error);
 
     return res.status(500).json({
-      error: "Flight data fetch failed",
-      message: err.message
+      error: "Failed to fetch flights",
+      details: error.message
     });
-
   }
 }
+⚠️ IMPORTANT FIXES YOU MUST DO
