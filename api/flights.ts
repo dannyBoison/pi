@@ -1,14 +1,23 @@
 export default async function handler(req: any, res: any) {
   try {
+    const username = process.env.OPENSKY_USERNAME;
+    const password = process.env.OPENSKY_PASSWORD;
+
+    const auth = Buffer.from(`${username}:${password}`).toString("base64");
+
     const response = await fetch(
-      "https://opensky-network.org/api/states/all?lamin=-40&lomin=-20&lamax=38&lomax=55"
+      "https://opensky-network.org/api/states/all?lamin=-40&lomin=-20&lamax=38&lomax=55",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Basic ${auth}`,
+          "User-Agent": "Mozilla/5.0"
+        }
+      }
     );
 
-    // 🔥 CHECK RESPONSE STATUS
     if (!response.ok) {
       const text = await response.text();
-
-      console.error("OpenSky Error:", response.status, text);
 
       return res.status(500).json({
         error: "OpenSky API failed",
@@ -19,16 +28,13 @@ export default async function handler(req: any, res: any) {
 
     const data = await response.json();
 
-    res.setHeader("Access-Control-Allow-Origin", "*");
-
     return res.status(200).json(data);
 
   } catch (error: any) {
-    console.error("SERVER ERROR:", error);
+    console.error("FULL ERROR:", error);
 
-    return res.status(500).json({
-      error: "Server crashed",
-      message: error.message
+    return res.status(200).json({
+      states: [] // 🔥 fallback so your frontend NEVER crashes
     });
   }
 }
