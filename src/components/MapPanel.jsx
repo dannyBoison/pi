@@ -229,7 +229,7 @@ export default function MapPanel() {
         </div>
 
         {/* WEATHER DETAILS */}
-        {selectedZone ? (
+        {selectedZone?.weather && (
           <div style={{ ...card, marginTop: 10 }}>
             <h3>Weather Detail</h3>
             <p><strong>Main:</strong> {selectedZone.weather.main}</p>
@@ -238,7 +238,10 @@ export default function MapPanel() {
             <p><strong>Wind Speed:</strong> {selectedZone.weather.wind} m/s</p>
             <p><strong>Zone Type:</strong> {selectedZone.type}</p>
           </div>
-        ) : selectedPlane ? (
+        )}
+
+        {/* PLANE DETAILS */}
+        {selectedPlane && (
           <div style={{ ...card, marginTop: 10 }}>
             <h3>Plane Detail</h3>
             <p><strong>Callsign:</strong> {selectedPlane.callsign}</p>
@@ -246,7 +249,7 @@ export default function MapPanel() {
             <p><strong>Speed:</strong> {selectedPlane.velocity} m/s</p>
             <p><strong>Heading:</strong> {selectedPlane.heading}°</p>
           </div>
-        ) : null}
+        )}
       </div>
 
       {/* MAP */}
