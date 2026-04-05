@@ -11,7 +11,6 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-
 // ================= AIRPORTS =================
 const airports = [
   { name: "Accra Intl Airport", coords: [5.6051, -0.1662] },
@@ -19,7 +18,6 @@ const airports = [
   { name: "Takoradi Airport", coords: [4.8962, -1.7554] },
   { name: "Kumasi Airport", coords: [6.7148, -1.567] }
 ];
-
 
 // ================= ICONS =================
 const airportIcon = L.icon({
@@ -32,7 +30,6 @@ const planeIcon = L.icon({
   iconSize: [30, 30],
   iconAnchor: [15, 15]
 });
-
 
 // ================= WEATHER ICONS =================
 const weatherIconsUrls = {
@@ -49,7 +46,6 @@ const zoneColors = {
   caution: "orange",
   safe: "green"
 };
-
 
 // ================= WEATHER ICON =================
 const createZoneIcon = (weatherMain, zoneType) => {
@@ -75,16 +71,11 @@ const createZoneIcon = (weatherMain, zoneType) => {
   });
 };
 
-
-
 // ================= COMPONENT =================
 export default function MapPanel() {
-
   const [zones, setZones] = useState([]);
-  const [center, setCenter] = useState([5.6051, -0.1662]);
+  const [center] = useState([5.6051, -0.1662]);
   const [radius] = useState(150);
-
-  const [city, setCity] = useState("");
 
   const [planes, setPlanes] = useState({});
   const [planeTrails, setPlaneTrails] = useState({});
@@ -96,21 +87,16 @@ export default function MapPanel() {
 
   const WEATHER_API = import.meta.env.VITE_WEATHER_API_KEY;
 
-
-
   // ================= RANDOM WEATHER =================
   const generateRandomPoints = (count = 8) => {
     const points = [];
-
     for (let i = 0; i < count; i++) {
       const lat = center[0] + (Math.random() - 0.5) * (radius / 50);
       const lng = center[1] + (Math.random() - 0.5) * (radius / 50);
       points.push({ lat, lng });
     }
-
     return points;
   };
-
 
   // ================= WEATHER =================
   const generateZonesFromWeather = async () => {
@@ -121,7 +107,6 @@ export default function MapPanel() {
       const res = await fetch(
         `https://api.openweathermap.org/data/2.5/weather?lat=${p.lat}&lon=${p.lng}&appid=${WEATHER_API}&units=metric`
       );
-
       const data = await res.json();
 
       const wind = data.wind?.speed || 0;
@@ -129,7 +114,6 @@ export default function MapPanel() {
       const weatherMain = data.weather?.[0]?.main || "Default";
 
       let type = "safe";
-
       if (wind > 15 || weatherMain === "Rain") type = "danger";
       else if (wind > 8 || weatherMain === "Clouds") type = "caution";
 
@@ -147,7 +131,6 @@ export default function MapPanel() {
 
     setZones(newZones);
   };
-
 
   // ================= FETCH FLIGHTS =================
   const fetchFlights = async () => {
@@ -169,87 +152,61 @@ export default function MapPanel() {
 
       setPlanes(prev => {
         const updated = { ...prev };
-
         incoming.forEach(p => {
           if (!updated[p.icao]) {
-            updated[p.icao] = {
-              ...p,
-              targetLat: p.lat,
-              targetLng: p.lng
-            };
+            updated[p.icao] = { ...p, targetLat: p.lat, targetLng: p.lng };
           } else {
             updated[p.icao].targetLat = p.lat;
             updated[p.icao].targetLng = p.lng;
           }
         });
-
         return updated;
       });
 
       setPlaneTrails(prev => {
         const updated = { ...prev };
-
         incoming.forEach(p => {
           if (!updated[p.icao]) updated[p.icao] = [];
-
           updated[p.icao].push([p.lat, p.lng]);
-
-          if (updated[p.icao].length > 20) {
-            updated[p.icao].shift();
-          }
+          if (updated[p.icao].length > 20) updated[p.icao].shift();
         });
-
         return updated;
       });
 
       setLastUpdated(new Date().toLocaleTimeString());
-
     } catch (err) {
       console.error(err);
     }
   };
-
 
   // ================= SMOOTH MOVEMENT =================
   useEffect(() => {
     const interval = setInterval(() => {
       setPlanes(prev => {
         const updated = { ...prev };
-
         Object.values(updated).forEach(p => {
           if (!p.targetLat) return;
-
           p.lat += (p.targetLat - p.lat) * 0.02;
           p.lng += (p.targetLng - p.lng) * 0.02;
         });
-
         return { ...updated };
       });
     }, 50);
-
     return () => clearInterval(interval);
   }, []);
 
-
-  // ================= FETCH EVERY 3 MIN =================
+  // ================= FETCH EVERY 1:30 MIN =================
   useEffect(() => {
     if (!startTracking) return;
-
     fetchFlights();
-
     const interval = setInterval(() => {
-      if (document.visibilityState === "visible") {
-        fetchFlights();
-      }
-    }, 180000); // 3 mins
-
+      if (document.visibilityState === "visible") fetchFlights();
+    }, 90000); // 1 min 30 sec
     return () => clearInterval(interval);
   }, [startTracking]);
 
-
   return (
     <div style={{ display: "flex" }}>
-
       {/* SIDEBAR */}
       <div style={{ width: "300px", background: "#0f172a", color: "white", padding: "20px" }}>
         <h2>✈ Smart Flight System</h2>
@@ -266,12 +223,33 @@ export default function MapPanel() {
           <p>Planes: {Object.keys(planes).length}</p>
           <p>Updated: {lastUpdated}</p>
         </div>
-      </div>
 
+        {/* WEATHER DETAILS */}
+        {selectedZone && (
+          <div style={{ ...card, marginTop: 10 }}>
+            <h3>Weather Detail</h3>
+            <p><strong>Main:</strong> {selectedZone.weather.main}</p>
+            <p><strong>Description:</strong> {selectedZone.weather.description}</p>
+            <p><strong>Temperature:</strong> {selectedZone.weather.temp} °C</p>
+            <p><strong>Wind Speed:</strong> {selectedZone.weather.wind} m/s</p>
+            <p><strong>Zone Type:</strong> {selectedZone.type}</p>
+          </div>
+        )}
+
+        {/* PLANE DETAILS */}
+        {selectedPlane && (
+          <div style={{ ...card, marginTop: 10 }}>
+            <h3>Plane Detail</h3>
+            <p><strong>Callsign:</strong> {selectedPlane.callsign}</p>
+            <p><strong>Altitude:</strong> {selectedPlane.altitude} m</p>
+            <p><strong>Speed:</strong> {selectedPlane.velocity} m/s</p>
+            <p><strong>Heading:</strong> {selectedPlane.heading}°</p>
+          </div>
+        )}
+      </div>
 
       {/* MAP */}
       <MapContainer center={center} zoom={6} style={{ height: "100vh", width: "100%" }}>
-
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
         {airports.map((a, i) => (
@@ -318,12 +296,10 @@ export default function MapPanel() {
         ))}
 
         <Circle center={center} radius={radius * 1000} />
-
       </MapContainer>
     </div>
   );
 }
-
 
 // ================= STYLES =================
 const btn = {
