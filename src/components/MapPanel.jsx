@@ -104,29 +104,33 @@ export default function MapPanel() {
     const newZones = [];
 
     for (let p of randomPoints) {
-      const res = await fetch(
-        `https://api.openweathermap.org/data/2.5/weather?lat=${p.lat}&lon=${p.lng}&appid=${WEATHER_API}&units=metric`
-      );
-      const data = await res.json();
+      try {
+        const res = await fetch(
+          `https://api.openweathermap.org/data/2.5/weather?lat=${p.lat}&lon=${p.lng}&appid=${WEATHER_API}&units=metric`
+        );
+        const data = await res.json();
 
-      const wind = data.wind?.speed || 0;
-      const temp = data.main?.temp || 0;
-      const weatherMain = data.weather?.[0]?.main || "Default";
+        const wind = data.wind?.speed || 0;
+        const temp = data.main?.temp || 0;
+        const weatherMain = data.weather?.[0]?.main || "Default";
 
-      let type = "safe";
-      if (wind > 15 || weatherMain === "Rain") type = "danger";
-      else if (wind > 8 || weatherMain === "Clouds") type = "caution";
+        let type = "safe";
+        if (wind > 15 || weatherMain === "Rain") type = "danger";
+        else if (wind > 8 || weatherMain === "Clouds") type = "caution";
 
-      newZones.push({
-        ...p,
-        type,
-        weather: {
-          temp,
-          wind,
-          description: data.weather?.[0]?.description,
-          main: weatherMain
-        }
-      });
+        newZones.push({
+          ...p,
+          type,
+          weather: {
+            temp,
+            wind,
+            description: data.weather?.[0]?.description,
+            main: weatherMain
+          }
+        });
+      } catch (err) {
+        console.error("Weather fetch error:", err);
+      }
     }
 
     setZones(newZones);
@@ -142,7 +146,7 @@ export default function MapPanel() {
         ?.filter(p => p[5] && p[6])
         .map(p => ({
           icao: p[0],
-          callsign: p[1],
+          callsign: p[1] || "N/A",
           lat: p[6],
           lng: p[5],
           altitude: p[7],
@@ -225,7 +229,7 @@ export default function MapPanel() {
         </div>
 
         {/* WEATHER DETAILS */}
-        {selectedZone && (
+        {selectedZone ? (
           <div style={{ ...card, marginTop: 10 }}>
             <h3>Weather Detail</h3>
             <p><strong>Main:</strong> {selectedZone.weather.main}</p>
@@ -234,10 +238,7 @@ export default function MapPanel() {
             <p><strong>Wind Speed:</strong> {selectedZone.weather.wind} m/s</p>
             <p><strong>Zone Type:</strong> {selectedZone.type}</p>
           </div>
-        )}
-
-        {/* PLANE DETAILS */}
-        {selectedPlane && (
+        ) : selectedPlane ? (
           <div style={{ ...card, marginTop: 10 }}>
             <h3>Plane Detail</h3>
             <p><strong>Callsign:</strong> {selectedPlane.callsign}</p>
@@ -245,7 +246,7 @@ export default function MapPanel() {
             <p><strong>Speed:</strong> {selectedPlane.velocity} m/s</p>
             <p><strong>Heading:</strong> {selectedPlane.heading}°</p>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* MAP */}
@@ -270,7 +271,13 @@ export default function MapPanel() {
                 setSelectedPlane(null);
               }
             }}
-          />
+          >
+            <Popup>
+              <strong>{z.weather.main}</strong><br/>
+              {z.weather.description}<br/>
+              Temp: {z.weather.temp} °C, Wind: {z.weather.wind} m/s
+            </Popup>
+          </Marker>
         ))}
 
         {/* PLANES */}
