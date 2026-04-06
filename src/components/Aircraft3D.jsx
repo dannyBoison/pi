@@ -1,25 +1,22 @@
 import React, { useRef, useState, useEffect } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useGLTF, Sky } from "@react-three/drei";
+import { Sky } from "@react-three/drei";
 import * as THREE from "three";
 
 // ================= PLANE =================
-function Plane() {
+function Plane({ speed }) {
   const planeRef = useRef();
   const { camera } = useThree();
 
-  const { scene } = useGLTF("/models/product.glb");
+  const velocity = useRef(new THREE.Vector3(0, 0, -speed));
+  const rotation = useRef({ pitch: 0, yaw: 0, roll: 0 });
 
-  const velocity = useRef(new THREE.Vector3(0, 0, 0));
-  const [throttle, setThrottle] = useState(0);
-  const [keys, setKeys] = useState({});
+  const keys = useRef({});
 
-  const maxThrottle = 50;
-  const liftThreshold = 10;
-
+  // ================= KEYBOARD =================
   useEffect(() => {
-    const down = (e) => setKeys((k) => ({ ...k, [e.key.toLowerCase()]: true }));
-    const up = (e) => setKeys((k) => ({ ...k, [e.key.toLowerCase()]: false }));
+    const down = (e) => (keys.current[e.key.toLowerCase()] = true);
+    const up = (e) => (keys.current[e.key.toLowerCase()] = false);
 
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
@@ -30,99 +27,84 @@ function Plane() {
     };
   }, []);
 
-  useFrame((_, delta) => {
-    const plane = planeRef.current;
-    if (!plane) return;
+  // ================= GAME LOOP =================
+  useFrame(() => {
+    const p = planeRef.current;
+    if (!p) return;
 
-    // ================= THROTTLE =================
-    if (keys["w"]) setThrottle((t) => Math.min(t + 30 * delta, maxThrottle));
-    if (keys["s"]) setThrottle((t) => Math.max(t - 30 * delta, 0));
+    // ===== CONTROLS =====
+    if (keys.current["w"]) rotation.current.pitch += 0.01;
+    if (keys.current["s"]) rotation.current.pitch -= 0.01;
+    if (keys.current["a"]) rotation.current.yaw += 0.01;
+    if (keys.current["d"]) rotation.current.yaw -= 0.01;
 
-    // ================= ROTATION =================
-    const rotSpeed = 1.5 * delta;
-    if (keys["a"]) plane.rotation.z += rotSpeed; // roll left
-    if (keys["d"]) plane.rotation.z -= rotSpeed; // roll right
-    if (keys["q"]) plane.rotation.y += rotSpeed; // yaw left
-    if (keys["e"]) plane.rotation.y -= rotSpeed; // yaw right
-    if (keys["arrowup"]) plane.rotation.x += rotSpeed; // pitch up
-    if (keys["arrowdown"]) plane.rotation.x -= rotSpeed; // pitch down
+    // roll effect (visual)
+    if (keys.current["a"]) rotation.current.roll = 0.3;
+    else if (keys.current["d"]) rotation.current.roll = -0.3;
+    else rotation.current.roll *= 0.9;
 
-    // ================= FORWARD =================
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quaternion);
-    const forwardVelocity = forward.clone().multiplyScalar(throttle * delta);
-    velocity.current.add(forwardVelocity);
+    // ===== APPLY ROTATION =====
+    p.rotation.x = rotation.current.pitch;
+    p.rotation.y = rotation.current.yaw;
+    p.rotation.z = rotation.current.roll;
 
-    // ================= LIFT =================
-    const speed = velocity.current.length();
-    let lift = 0;
-    if (speed > liftThreshold) {
-      lift = Math.sin(-plane.rotation.x) * speed * 0.3;
-    }
-    velocity.current.y += lift * delta;
+    // ===== FORWARD MOVEMENT =====
+    const forward = new THREE.Vector3(0, 0, -1);
+    forward.applyEuler(p.rotation);
+    forward.multiplyScalar(speed);
 
-    // ================= GRAVITY =================
-    velocity.current.y -= 9.8 * delta * 0.3;
+    velocity.current.lerp(forward, 0.05);
+    p.position.add(velocity.current);
 
-    // ================= DRAG =================
-    velocity.current.multiplyScalar(0.98);
+    // ===== CAMERA FOLLOW =====
+    const camOffset = new THREE.Vector3(0, 2, 6);
+    camOffset.applyEuler(p.rotation);
 
-    // ================= MOVE PLANE =================
-    plane.position.add(velocity.current);
-
-    // ================= GROUND COLLISION =================
-    if (plane.position.y < 0) {
-      plane.position.y = 0;
-      velocity.current.y = 0;
-      if (speed < liftThreshold) plane.rotation.x = 0;
-    }
-
-    // ================= CAMERA FOLLOW =================
-    // Camera offset behind and above the plane
-    const camOffset = new THREE.Vector3(0, 8, 20).applyQuaternion(plane.quaternion);
-    const camTarget = plane.position.clone().add(camOffset);
-
-    // Smooth lerp for smooth following
-    camera.position.lerp(camTarget, 0.08);
-
-    // Look at plane position
-    camera.lookAt(plane.position);
+    camera.position.copy(p.position.clone().add(camOffset));
+    camera.lookAt(p.position);
   });
 
   return (
-    <group ref={planeRef} position={[0, 0, 0]}>
-      <primitive object={scene} scale={0.25} rotation={[0, Math.PI, 0]} />
-    </group>
+    <mesh ref={planeRef}>
+      {/* SIMPLE PLANE SHAPE */}
+      <boxGeometry args={[1, 0.3, 2]} />
+      <meshStandardMaterial color="orange" />
+    </mesh>
   );
 }
 
 // ================= GROUND =================
 function Ground() {
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[2000, 10000]} />
-      <meshStandardMaterial color="#4c7c3a" />
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -2, 0]}>
+      <planeGeometry args={[500, 500]} />
+      <meshStandardMaterial color="#1e293b" />
     </mesh>
   );
 }
 
-// ================= RUNWAY =================
-function Runway() {
-  return (
-    <group>
-      {/* Runway */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
-        <planeGeometry args={[20, 500]} />
-        <meshStandardMaterial color="#222" />
-      </mesh>
+// ================= CLOUDS =================
+function Clouds() {
+  const cloudRef = useRef();
 
-      {/* Center line */}
-      {[...Array(25)].map((_, i) => (
+  useFrame(() => {
+    if (cloudRef.current) {
+      cloudRef.current.rotation.y += 0.0005;
+    }
+  });
+
+  return (
+    <group ref={cloudRef}>
+      {[...Array(20)].map((_, i) => (
         <mesh
           key={i}
-          rotation={[-Math.PI / 2, 0, 0]}
-          position={[0, 0.02, -240 + i * 20]}
+          position={[
+            Math.random() * 200 - 100,
+            Math.random() * 20 + 5,
+            Math.random() * 200 - 100
+          ]}
         >
-          <planeGeometry args={[1, 15]} />
+          <sphereGeometry args={[1.5, 8, 8]} />
           <meshStandardMaterial color="white" />
         </mesh>
       ))}
@@ -130,18 +112,62 @@ function Runway() {
   );
 }
 
-// ================= APP =================
-export default function App() {
+// ================= UI CONTROLS =================
+function ControlsUI({ speed, setSpeed }) {
   return (
-    <Canvas camera={{ position: [0, 10, 40], fov: 75 }} style={{ width: "100vw", height: "100vh" }}>
-      <Sky sunPosition={[100, 50, 100]} turbidity={10} />
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[100, 200, 50]} intensity={1.5} />
-      <fog attach="fog" args={["#cce7ff", 200, 2000]} />
+    <div
+      style={{
+        position: "absolute",
+        top: 20,
+        left: 20,
+        background: "#0f172a",
+        color: "white",
+        padding: 15,
+        borderRadius: 10
+      }}
+    >
+      <h3>✈ Flight Controls</h3>
+      <p>W/S → Pitch</p>
+      <p>A/D → Turn</p>
 
-      <Ground />
-      <Runway />
-      <Plane />
-    </Canvas>
+      <div style={{ marginTop: 10 }}>
+        <label>Speed</label>
+        <input
+          type="range"
+          min="0.05"
+          max="0.5"
+          step="0.01"
+          value={speed}
+          onChange={(e) => setSpeed(parseFloat(e.target.value))}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ================= MAIN =================
+export default function FlightSimulation() {
+  const [speed, setSpeed] = useState(0.1);
+
+  return (
+    <>
+      <ControlsUI speed={speed} setSpeed={setSpeed} />
+
+      <Canvas camera={{ position: [0, 2, 6], fov: 75 }}>
+        {/* LIGHTING */}
+        <ambientLight intensity={0.5} />
+        <directionalLight position={[10, 10, 5]} intensity={1} />
+
+        {/* SKY */}
+        <Sky sunPosition={[100, 20, 100]} />
+
+        {/* WORLD */}
+        <Ground />
+        <Clouds />
+
+        {/* PLANE */}
+        <Plane speed={speed} />
+      </Canvas>
+    </>
   );
 }
