@@ -3,11 +3,13 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Sky, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 
-// ================= PLANE (GLB MODEL) =================
-function Plane({ speed }) {
+// ================= GLOBAL BULLETS =================
+const bullets = [];
+
+// ================= PLANE =================
+function Plane({ speed, setStats }) {
   const planeRef = useRef();
   const { camera, scene } = useThree();
-
   const { scene: model } = useGLTF("/models/product.glb");
 
   const velocity = useRef(new THREE.Vector3(0, 0, -speed));
@@ -16,7 +18,13 @@ function Plane({ speed }) {
 
   // KEYBOARD
   useEffect(() => {
-    const down = (e) => (keys.current[e.key.toLowerCase()] = true);
+    const down = (e) => {
+      keys.current[e.key.toLowerCase()] = true;
+
+      // SHOOT
+      if (e.code === "Space") shoot();
+    };
+
     const up = (e) => (keys.current[e.key.toLowerCase()] = false);
 
     window.addEventListener("keydown", down);
@@ -28,6 +36,19 @@ function Plane({ speed }) {
     };
   }, []);
 
+  const shoot = () => {
+    if (!planeRef.current) return;
+
+    const bullet = {
+      position: planeRef.current.position.clone(),
+      direction: new THREE.Vector3(0, 0, -1).applyEuler(
+        planeRef.current.rotation
+      ),
+    };
+
+    bullets.push(bullet);
+  };
+
   useFrame(() => {
     const p = planeRef.current;
     if (!p) return;
@@ -38,198 +59,200 @@ function Plane({ speed }) {
     if (keys.current["a"]) rotation.current.yaw += 0.01;
     if (keys.current["d"]) rotation.current.yaw -= 0.01;
 
-    // ROLL (smooth)
+    // ROLL
     if (keys.current["a"]) rotation.current.roll = 0.4;
     else if (keys.current["d"]) rotation.current.roll = -0.4;
     else rotation.current.roll *= 0.92;
 
-    // APPLY ROTATION
     p.rotation.x = rotation.current.pitch;
     p.rotation.y = rotation.current.yaw;
     p.rotation.z = rotation.current.roll;
 
-    // FORWARD VECTOR
-    const forward = new THREE.Vector3(0, 0, -1);
-    forward.applyEuler(p.rotation);
+    const forward = new THREE.Vector3(0, 0, -1).applyEuler(p.rotation);
 
     let currentSpeed = speed;
     if (keys.current["shift"]) currentSpeed *= 2.5;
 
-    // SMOOTH VELOCITY (feels like air resistance)
     forward.multiplyScalar(currentSpeed);
     velocity.current.lerp(forward, 0.03);
 
-    // GRAVITY + LIFT (more realistic)
-    velocity.current.y += rotation.current.pitch * 0.02; // lift
-    velocity.current.y -= 0.0015; // gravity
+    // PHYSICS
+    velocity.current.y += rotation.current.pitch * 0.02;
+    velocity.current.y -= 0.0015;
 
-    // APPLY MOVEMENT
     p.position.add(velocity.current);
 
-    // GROUND LIMIT
     if (p.position.y < 3) p.position.y = 3;
 
-    // WORLD MOVEMENT (infinite illusion)
+    // WORLD MOVE
     scene.children.forEach((obj) => {
       if (obj.name === "world") {
         obj.position.z += currentSpeed * 25;
       }
     });
 
-    // CAMERA (cinematic follow)
+    // CAMERA
     const camOffset = new THREE.Vector3(0, 4, 12);
     camOffset.applyEuler(p.rotation);
 
-    const target = p.position.clone().add(camOffset);
-
-    camera.position.lerp(target, 0.08);
+    camera.position.lerp(p.position.clone().add(camOffset), 0.08);
     camera.lookAt(p.position);
+
+    // UPDATE HUD
+    setStats({
+      speed: currentSpeed.toFixed(2),
+      altitude: p.position.y.toFixed(1),
+    });
   });
 
   return (
-    <primitive
-      ref={planeRef}
-      object={model}
-      scale={1.5}
-      position={[0, 5, 0]}
-    />
+    <primitive ref={planeRef} object={model} scale={1.5} position={[0, 5, 0]} />
   );
 }
 
-// ================= GROUND =================
-function Ground() {
-  const ref = useRef();
-
-  useFrame(() => {
-    if (ref.current) {
-      ref.current.position.z += 0.2;
-      if (ref.current.position.z > 500) ref.current.position.z = 0;
-    }
-  });
-
-  return (
-    <mesh
-      ref={ref}
-      rotation={[-Math.PI / 2, 0, 0]}
-      receiveShadow
-    >
-      <planeGeometry args={[3000, 3000]} />
-      <meshStandardMaterial color="#0f172a" roughness={1} />
-    </mesh>
-  );
-}
-
-// ================= CLOUDS =================
-function Clouds() {
+// ================= BULLETS =================
+function Bullets({ targets, setHits }) {
   const groupRef = useRef();
 
-  const clouds = useRef(
-    [...Array(80)].map(() => ({
-      position: [
-        Math.random() * 800 - 400,
-        Math.random() * 60 + 20,
-        Math.random() * 800 - 400
-      ],
-      scale: Math.random() * 3 + 1
-    }))
-  );
-
   useFrame(() => {
+    bullets.forEach((b, i) => {
+      b.position.add(b.direction.clone().multiplyScalar(2));
+
+      // HIT DETECTION
+      targets.current.forEach((t, ti) => {
+        if (b.position.distanceTo(t.position) < 2) {
+          targets.current.splice(ti, 1);
+          bullets.splice(i, 1);
+          setHits((h) => h + 1);
+        }
+      });
+    });
+
     if (groupRef.current) {
-      groupRef.current.rotation.y += 0.0003;
+      groupRef.current.children.forEach((mesh, i) => {
+        if (bullets[i]) {
+          mesh.position.copy(bullets[i].position);
+        }
+      });
     }
   });
 
   return (
     <group ref={groupRef}>
-      {clouds.current.map((c, i) => (
-        <mesh key={i} position={c.position} scale={c.scale}>
-          <sphereGeometry args={[2, 16, 16]} />
-          <meshStandardMaterial color="white" transparent opacity={0.85} />
+      {bullets.map((b, i) => (
+        <mesh key={i} position={b.position}>
+          <sphereGeometry args={[0.3, 8, 8]} />
+          <meshStandardMaterial color="red" />
         </mesh>
       ))}
     </group>
   );
 }
 
+// ================= TARGETS =================
+function Targets({ targets }) {
+  useEffect(() => {
+    targets.current = [...Array(10)].map(() => ({
+      position: new THREE.Vector3(
+        Math.random() * 200 - 100,
+        Math.random() * 50 + 10,
+        Math.random() * -200
+      ),
+    }));
+  }, []);
+
+  return (
+    <>
+      {targets.current.map((t, i) => (
+        <mesh key={i} position={t.position}>
+          <boxGeometry args={[2, 2, 2]} />
+          <meshStandardMaterial color="red" />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
+// ================= CLOUDS =================
+function Clouds() {
+  const clouds = useRef(
+    [...Array(80)].map(() => ({
+      position: [
+        Math.random() * 800 - 400,
+        Math.random() * 60 + 20,
+        Math.random() * 800 - 400,
+      ],
+    }))
+  );
+
+  return (
+    <>
+      {clouds.current.map((c, i) => (
+        <mesh key={i} position={c.position}>
+          <sphereGeometry args={[2, 16, 16]} />
+          <meshStandardMaterial color="white" opacity={0.8} transparent />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
 // ================= UI =================
-function ControlsUI({ speed, setSpeed }) {
+function HUD({ stats, hits }) {
   return (
     <div
       style={{
         position: "absolute",
         top: 20,
         left: 20,
-        background: "rgba(15,23,42,0.7)",
-        backdropFilter: "blur(12px)",
-        color: "white",
+        color: "lime",
+        fontFamily: "monospace",
+        background: "rgba(0,0,0,0.5)",
         padding: 15,
-        borderRadius: 14,
-        fontFamily: "sans-serif",
-        boxShadow: "0 10px 40px rgba(0,0,0,0.6)"
+        borderRadius: 10,
       }}
     >
-      <h3>✈ Flight HUD</h3>
-      <p>W/S → Pitch</p>
-      <p>A/D → Turn</p>
-      <p>Shift → Boost</p>
-
-      <div style={{ marginTop: 10 }}>
-        <label>Speed</label>
-        <input
-          type="range"
-          min="0.05"
-          max="0.6"
-          step="0.01"
-          value={speed}
-          onChange={(e) => setSpeed(parseFloat(e.target.value))}
-        />
-      </div>
+      <h3>✈ HUD</h3>
+      <p>Speed: {stats.speed}</p>
+      <p>Altitude: {stats.altitude}</p>
+      <p>Hits: {hits}</p>
+      <p>SPACE → Shoot</p>
     </div>
   );
 }
 
 // ================= MAIN =================
 export default function FlightSimulation() {
-  const [speed, setSpeed] = useState(0.12);
+  const [speed] = useState(0.12);
+  const [stats, setStats] = useState({ speed: 0, altitude: 0 });
+  const [hits, setHits] = useState(0);
+
+  const targets = useRef([]);
 
   return (
-    <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
-      <ControlsUI speed={speed} setSpeed={setSpeed} />
+    <div style={{ width: "100vw", height: "100vh" }}>
+      <HUD stats={stats} hits={hits} />
 
-      <Canvas
-        shadows
-        camera={{ position: [0, 5, 12], fov: 75 }}
-      >
-        {/* REALISTIC RENDERING */}
+      <Canvas shadows camera={{ position: [0, 5, 12] }}>
         <color attach="background" args={["#87CEEB"]} />
         <fog attach="fog" args={["#87CEEB", 20, 600]} />
 
-        {/* LIGHTING */}
-        <ambientLight intensity={0.25} />
-        <directionalLight
-          position={[100, 100, 50]}
-          intensity={1.5}
-          castShadow
-        />
+        <ambientLight intensity={0.3} />
+        <directionalLight position={[100, 100, 50]} intensity={1.5} />
 
-        {/* SKY */}
-        <Sky sunPosition={[100, 20, 100]} turbidity={8} />
+        <Sky sunPosition={[100, 20, 100]} />
 
-        {/* WORLD */}
         <group name="world">
-          <Ground />
           <Clouds />
+          <Targets targets={targets} />
         </group>
 
-        {/* PLANE */}
         <Suspense fallback={null}>
-          <Plane speed={speed} />
+          <Plane speed={speed} setStats={setStats} />
         </Suspense>
+
+        <Bullets targets={targets} setHits={setHits} />
       </Canvas>
     </div>
   );
 }
-
-
-And I’ll turn this into a full flight game project you can show in interviews or even monetize 💰
