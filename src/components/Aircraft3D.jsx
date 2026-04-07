@@ -6,14 +6,13 @@ import * as THREE from "three";
 // ================= PLANE =================
 function Plane({ speed }) {
   const planeRef = useRef();
-  const { camera } = useThree();
+  const { camera, scene } = useThree();
 
   const velocity = useRef(new THREE.Vector3(0, 0, -speed));
   const rotation = useRef({ pitch: 0, yaw: 0, roll: 0 });
-
   const keys = useRef({});
 
-  // ================= KEYBOARD =================
+  // KEYBOARD
   useEffect(() => {
     const down = (e) => (keys.current[e.key.toLowerCase()] = true);
     const up = (e) => (keys.current[e.key.toLowerCase()] = false);
@@ -27,47 +26,65 @@ function Plane({ speed }) {
     };
   }, []);
 
-  // ================= GAME LOOP =================
   useFrame(() => {
     const p = planeRef.current;
     if (!p) return;
 
-    // ===== CONTROLS =====
+    // CONTROLS
     if (keys.current["w"]) rotation.current.pitch += 0.01;
     if (keys.current["s"]) rotation.current.pitch -= 0.01;
     if (keys.current["a"]) rotation.current.yaw += 0.01;
     if (keys.current["d"]) rotation.current.yaw -= 0.01;
 
-    // roll effect (visual)
+    // roll effect
     if (keys.current["a"]) rotation.current.roll = 0.3;
     else if (keys.current["d"]) rotation.current.roll = -0.3;
     else rotation.current.roll *= 0.9;
 
-    // ===== APPLY ROTATION =====
-    p.rotation.x = rotation.current.pitch;
+    // APPLY ROTATION
+    p.rotation.x = rotation.current.pitch + Math.PI / 2;
     p.rotation.y = rotation.current.yaw;
     p.rotation.z = rotation.current.roll;
 
-    // ===== FORWARD MOVEMENT =====
+    // FORWARD
     const forward = new THREE.Vector3(0, 0, -1);
     forward.applyEuler(p.rotation);
-    forward.multiplyScalar(speed);
 
+    let currentSpeed = speed;
+    if (keys.current["shift"]) currentSpeed *= 2;
+
+    forward.multiplyScalar(currentSpeed);
     velocity.current.lerp(forward, 0.05);
+
+    // GRAVITY
+    velocity.current.y -= 0.002;
+
+    // MOVE PLANE
     p.position.add(velocity.current);
 
-    // ===== CAMERA FOLLOW =====
-    const camOffset = new THREE.Vector3(0, 2, 6);
+    // GROUND LIMIT
+    if (p.position.y < 2) p.position.y = 2;
+
+    // MOVE WORLD (illusion of speed)
+    scene.children.forEach((obj) => {
+      if (obj.name === "world") {
+        obj.position.z += currentSpeed * 20;
+      }
+    });
+
+    // CAMERA FOLLOW (smooth)
+    const camOffset = new THREE.Vector3(0, 3, 10);
     camOffset.applyEuler(p.rotation);
 
-    camera.position.copy(p.position.clone().add(camOffset));
+    const targetPos = p.position.clone().add(camOffset);
+    camera.position.lerp(targetPos, 0.1);
     camera.lookAt(p.position);
   });
 
   return (
     <mesh ref={planeRef}>
-      {/* SIMPLE PLANE SHAPE */}
-      <boxGeometry args={[1, 0.3, 2]} />
+      {/* Better plane shape */}
+      <coneGeometry args={[0.5, 2, 16]} />
       <meshStandardMaterial color="orange" />
     </mesh>
   );
@@ -77,7 +94,7 @@ function Plane({ speed }) {
 function Ground() {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -2, 0]}>
-      <planeGeometry args={[500, 500]} />
+      <planeGeometry args={[2000, 2000]} />
       <meshStandardMaterial color="#1e293b" />
     </mesh>
   );
@@ -85,26 +102,29 @@ function Ground() {
 
 // ================= CLOUDS =================
 function Clouds() {
-  const cloudRef = useRef();
+  const groupRef = useRef();
+
+  const clouds = useRef(
+    [...Array(50)].map(() => ({
+      position: [
+        Math.random() * 500 - 250,
+        Math.random() * 40 + 10,
+        Math.random() * 500 - 250
+      ]
+    }))
+  );
 
   useFrame(() => {
-    if (cloudRef.current) {
-      cloudRef.current.rotation.y += 0.0005;
+    if (groupRef.current) {
+      groupRef.current.rotation.y += 0.0005;
     }
   });
 
   return (
-    <group ref={cloudRef}>
-      {[...Array(20)].map((_, i) => (
-        <mesh
-          key={i}
-          position={[
-            Math.random() * 200 - 100,
-            Math.random() * 20 + 5,
-            Math.random() * 200 - 100
-          ]}
-        >
-          <sphereGeometry args={[1.5, 8, 8]} />
+    <group ref={groupRef}>
+      {clouds.current.map((c, i) => (
+        <mesh key={i} position={c.position}>
+          <sphereGeometry args={[2, 12, 12]} />
           <meshStandardMaterial color="white" />
         </mesh>
       ))}
@@ -112,7 +132,7 @@ function Clouds() {
   );
 }
 
-// ================= UI CONTROLS =================
+// ================= UI =================
 function ControlsUI({ speed, setSpeed }) {
   return (
     <div
@@ -120,15 +140,19 @@ function ControlsUI({ speed, setSpeed }) {
         position: "absolute",
         top: 20,
         left: 20,
-        background: "#0f172a",
+        background: "rgba(15, 23, 42, 0.8)",
+        backdropFilter: "blur(10px)",
         color: "white",
         padding: 15,
-        borderRadius: 10
+        borderRadius: 12,
+        fontFamily: "sans-serif",
+        boxShadow: "0 10px 30px rgba(0,0,0,0.5)"
       }}
     >
       <h3>✈ Flight Controls</h3>
       <p>W/S → Pitch</p>
       <p>A/D → Turn</p>
+      <p>Shift → Boost</p>
 
       <div style={{ marginTop: 10 }}>
         <label>Speed</label>
@@ -150,24 +174,29 @@ export default function FlightSimulation() {
   const [speed, setSpeed] = useState(0.1);
 
   return (
-    <>
+    <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
       <ControlsUI speed={speed} setSpeed={setSpeed} />
 
-      <Canvas camera={{ position: [0, 2, 6], fov: 75 }}>
-        {/* LIGHTING */}
-        <ambientLight intensity={0.5} />
-        <directionalLight position={[10, 10, 5]} intensity={1} />
+      <Canvas camera={{ position: [0, 3, 10], fov: 75 }}>
+        {/* FOG */}
+        <fog attach="fog" args={["#87CEEB", 10, 300]} />
+
+        {/* LIGHT */}
+        <ambientLight intensity={0.3} />
+        <directionalLight position={[50, 50, 25]} intensity={1.5} />
 
         {/* SKY */}
         <Sky sunPosition={[100, 20, 100]} />
 
         {/* WORLD */}
-        <Ground />
-        <Clouds />
+        <group name="world">
+          <Ground />
+          <Clouds />
+        </group>
 
         {/* PLANE */}
         <Plane speed={speed} />
       </Canvas>
-    </>
+    </div>
   );
 }
