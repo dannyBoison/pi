@@ -3,8 +3,10 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Sky, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 
-// ================= GLOBAL BULLETS =================
+// ================= GLOBAL =================
 const bullets = [];
+const missiles = [];
+const explosions = [];
 
 // ================= PLANE =================
 function Plane({ speed, setStats }) {
@@ -15,14 +17,31 @@ function Plane({ speed, setStats }) {
   const velocity = useRef(new THREE.Vector3(0, 0, -speed));
   const rotation = useRef({ pitch: 0, yaw: 0, roll: 0 });
   const keys = useRef({});
+  const [cockpit, setCockpit] = useState(false);
 
-  // KEYBOARD
+  // FIX MODEL
+  useEffect(() => {
+    if (model) {
+      model.traverse((c) => {
+        if (c.isMesh) {
+          c.castShadow = true;
+          c.receiveShadow = true;
+        }
+      });
+
+      model.scale.set(0.02, 0.02, 0.02); // FIX SIZE
+      model.rotation.y = Math.PI;
+    }
+  }, [model]);
+
+  // INPUTS
   useEffect(() => {
     const down = (e) => {
       keys.current[e.key.toLowerCase()] = true;
 
-      // SHOOT
       if (e.code === "Space") shoot();
+      if (e.key.toLowerCase() === "m") shootMissile();
+      if (e.key.toLowerCase() === "c") setCockpit((v) => !v);
     };
 
     const up = (e) => (keys.current[e.key.toLowerCase()] = false);
@@ -39,14 +58,23 @@ function Plane({ speed, setStats }) {
   const shoot = () => {
     if (!planeRef.current) return;
 
-    const bullet = {
+    bullets.push({
       position: planeRef.current.position.clone(),
       direction: new THREE.Vector3(0, 0, -1).applyEuler(
         planeRef.current.rotation
       ),
-    };
+    });
+  };
 
-    bullets.push(bullet);
+  const shootMissile = () => {
+    if (!planeRef.current) return;
+
+    missiles.push({
+      position: planeRef.current.position.clone(),
+      direction: new THREE.Vector3(0, 0, -1).applyEuler(
+        planeRef.current.rotation
+      ),
+    });
   };
 
   useFrame(() => {
@@ -59,14 +87,15 @@ function Plane({ speed, setStats }) {
     if (keys.current["a"]) rotation.current.yaw += 0.01;
     if (keys.current["d"]) rotation.current.yaw -= 0.01;
 
-    // ROLL
     if (keys.current["a"]) rotation.current.roll = 0.4;
     else if (keys.current["d"]) rotation.current.roll = -0.4;
     else rotation.current.roll *= 0.92;
 
-    p.rotation.x = rotation.current.pitch;
-    p.rotation.y = rotation.current.yaw;
-    p.rotation.z = rotation.current.roll;
+    p.rotation.set(
+      rotation.current.pitch,
+      rotation.current.yaw,
+      rotation.current.roll
+    );
 
     const forward = new THREE.Vector3(0, 0, -1).applyEuler(p.rotation);
 
@@ -81,24 +110,36 @@ function Plane({ speed, setStats }) {
     velocity.current.y -= 0.0015;
 
     p.position.add(velocity.current);
-
     if (p.position.y < 3) p.position.y = 3;
 
-    // WORLD MOVE
+    // MOVE WORLD
     scene.children.forEach((obj) => {
       if (obj.name === "world") {
         obj.position.z += currentSpeed * 25;
       }
     });
 
-    // CAMERA
-    const camOffset = new THREE.Vector3(0, 4, 12);
-    camOffset.applyEuler(p.rotation);
+    // CAMERA MODES
+    if (cockpit) {
+      const cockpitPos = new THREE.Vector3(0, 2, 2);
+      cockpitPos.applyEuler(p.rotation);
 
-    camera.position.lerp(p.position.clone().add(camOffset), 0.08);
+      camera.position.lerp(
+        p.position.clone().add(cockpitPos),
+        0.2
+      );
+    } else {
+      const camOffset = new THREE.Vector3(0, 6, 18);
+      camOffset.applyEuler(p.rotation);
+
+      camera.position.lerp(
+        p.position.clone().add(camOffset),
+        0.08
+      );
+    }
+
     camera.lookAt(p.position);
 
-    // UPDATE HUD
     setStats({
       speed: currentSpeed.toFixed(2),
       altitude: p.position.y.toFixed(1),
@@ -106,21 +147,24 @@ function Plane({ speed, setStats }) {
   });
 
   return (
-    <primitive ref={planeRef} object={model} scale={1.5} position={[0, 5, 0]} />
+    <group ref={planeRef} position={[0, 5, 0]}>
+      <primitive object={model} />
+    </group>
   );
 }
 
-// ================= BULLETS =================
-function Bullets({ targets, setHits }) {
+// ================= WEAPONS =================
+function Weapons({ targets, setHits }) {
   const groupRef = useRef();
 
   useFrame(() => {
+    // BULLETS
     bullets.forEach((b, i) => {
       b.position.add(b.direction.clone().multiplyScalar(2));
 
-      // HIT DETECTION
       targets.current.forEach((t, ti) => {
         if (b.position.distanceTo(t.position) < 2) {
+          explosions.push({ position: t.position.clone(), life: 20 });
           targets.current.splice(ti, 1);
           bullets.splice(i, 1);
           setHits((h) => h + 1);
@@ -128,24 +172,58 @@ function Bullets({ targets, setHits }) {
       });
     });
 
-    if (groupRef.current) {
-      groupRef.current.children.forEach((mesh, i) => {
-        if (bullets[i]) {
-          mesh.position.copy(bullets[i].position);
+    // MISSILES
+    missiles.forEach((m, i) => {
+      m.position.add(m.direction.clone().multiplyScalar(1));
+
+      targets.current.forEach((t, ti) => {
+        if (m.position.distanceTo(t.position) < 3) {
+          explosions.push({ position: t.position.clone(), life: 40 });
+          targets.current.splice(ti, 1);
+          missiles.splice(i, 1);
+          setHits((h) => h + 2);
         }
       });
-    }
+    });
   });
 
   return (
-    <group ref={groupRef}>
+    <>
       {bullets.map((b, i) => (
-        <mesh key={i} position={b.position}>
-          <sphereGeometry args={[0.3, 8, 8]} />
+        <mesh key={"b" + i} position={b.position}>
+          <sphereGeometry args={[0.3]} />
           <meshStandardMaterial color="red" />
         </mesh>
       ))}
-    </group>
+
+      {missiles.map((m, i) => (
+        <mesh key={"m" + i} position={m.position}>
+          <coneGeometry args={[0.5, 2]} />
+          <meshStandardMaterial color="yellow" />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
+// ================= EXPLOSIONS =================
+function Explosions() {
+  useFrame(() => {
+    explosions.forEach((e, i) => {
+      e.life--;
+      if (e.life <= 0) explosions.splice(i, 1);
+    });
+  });
+
+  return (
+    <>
+      {explosions.map((e, i) => (
+        <mesh key={i} position={e.position} scale={e.life * 0.1}>
+          <sphereGeometry args={[1, 8, 8]} />
+          <meshStandardMaterial color="orange" />
+        </mesh>
+      ))}
+    </>
   );
 }
 
@@ -190,43 +268,39 @@ function Clouds() {
       {clouds.current.map((c, i) => (
         <mesh key={i} position={c.position}>
           <sphereGeometry args={[2, 16, 16]} />
-          <meshStandardMaterial color="white" opacity={0.8} transparent />
+          <meshStandardMaterial transparent opacity={0.8} />
         </mesh>
       ))}
     </>
   );
 }
 
-// ================= UI =================
+// ================= HUD =================
 function HUD({ stats, hits }) {
   return (
-    <div
-      style={{
-        position: "absolute",
-        top: 20,
-        left: 20,
-        color: "lime",
-        fontFamily: "monospace",
-        background: "rgba(0,0,0,0.5)",
-        padding: 15,
-        borderRadius: 10,
-      }}
-    >
+    <div style={{
+      position: "absolute",
+      top: 20,
+      left: 20,
+      color: "lime",
+      background: "rgba(0,0,0,0.5)",
+      padding: 15
+    }}>
       <h3>✈ HUD</h3>
       <p>Speed: {stats.speed}</p>
       <p>Altitude: {stats.altitude}</p>
       <p>Hits: {hits}</p>
-      <p>SPACE → Shoot</p>
+      <p>SPACE: Shoot</p>
+      <p>M: Missile</p>
+      <p>C: Cockpit View</p>
     </div>
   );
 }
 
 // ================= MAIN =================
 export default function FlightSimulation() {
-  const [speed] = useState(0.12);
   const [stats, setStats] = useState({ speed: 0, altitude: 0 });
   const [hits, setHits] = useState(0);
-
   const targets = useRef([]);
 
   return (
@@ -248,10 +322,11 @@ export default function FlightSimulation() {
         </group>
 
         <Suspense fallback={null}>
-          <Plane speed={speed} setStats={setStats} />
+          <Plane speed={0.12} setStats={setStats} />
         </Suspense>
 
-        <Bullets targets={targets} setHits={setHits} />
+        <Weapons targets={targets} setHits={setHits} />
+        <Explosions />
       </Canvas>
     </div>
   );
