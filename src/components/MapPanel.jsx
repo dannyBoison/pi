@@ -48,7 +48,7 @@ const zoneColors = {
 };
 
 // ================= WEATHER ICON =================
-const createZoneIcon = (weatherMain, zoneType) => {
+const createZoneIcon = (weatherMain, zoneType, isSelected) => {
   const color = zoneColors[zoneType] || "green";
   const weatherUrl = weatherIconsUrls[weatherMain] || weatherIconsUrls.Default;
 
@@ -56,7 +56,7 @@ const createZoneIcon = (weatherMain, zoneType) => {
     html: `
       <div style="
         background-color:${color};
-        border:2px solid white;
+        border:${isSelected ? "3px solid yellow" : "2px solid white"};
         border-radius:50%;
         width:35px;
         height:35px;
@@ -119,6 +119,7 @@ export default function MapPanel() {
         else if (wind > 8 || weatherMain === "Clouds") type = "caution";
 
         newZones.push({
+          id: Math.random(), // ✅ FIX: unique id
           ...p,
           type,
           weather: {
@@ -134,6 +135,7 @@ export default function MapPanel() {
     }
 
     setZones(newZones);
+    setSelectedZone(null); // reset selection
   };
 
   // ================= FETCH FLIGHTS =================
@@ -199,13 +201,13 @@ export default function MapPanel() {
     return () => clearInterval(interval);
   }, []);
 
-  // ================= FETCH EVERY 1:30 MIN =================
+  // ================= FETCH LOOP =================
   useEffect(() => {
     if (!startTracking) return;
     fetchFlights();
     const interval = setInterval(() => {
       if (document.visibilityState === "visible") fetchFlights();
-    }, 90000); // 1 min 30 sec
+    }, 90000);
     return () => clearInterval(interval);
   }, [startTracking]);
 
@@ -229,9 +231,9 @@ export default function MapPanel() {
         </div>
 
         {/* WEATHER DETAILS */}
-        {selectedZone?.weather && (
+        {selectedZone && selectedZone.weather && (
           <div style={{ ...card, marginTop: 10 }}>
-            <h3>Weather Detail</h3>
+            <h3>🌦 Weather Detail</h3>
             <p><strong>Main:</strong> {selectedZone.weather.main}</p>
             <p><strong>Description:</strong> {selectedZone.weather.description}</p>
             <p><strong>Temperature:</strong> {selectedZone.weather.temp} °C</p>
@@ -243,7 +245,7 @@ export default function MapPanel() {
         {/* PLANE DETAILS */}
         {selectedPlane && (
           <div style={{ ...card, marginTop: 10 }}>
-            <h3>Plane Detail</h3>
+            <h3>✈ Plane Detail</h3>
             <p><strong>Callsign:</strong> {selectedPlane.callsign}</p>
             <p><strong>Altitude:</strong> {selectedPlane.altitude} m</p>
             <p><strong>Speed:</strong> {selectedPlane.velocity} m/s</p>
@@ -263,14 +265,14 @@ export default function MapPanel() {
         ))}
 
         {/* WEATHER */}
-        {zones.map((z, i) => (
+        {zones.map((z) => (
           <Marker
-            key={i}
+            key={z.id}
             position={[z.lat, z.lng]}
-            icon={createZoneIcon(z.weather.main, z.type)}
+            icon={createZoneIcon(z.weather.main, z.type, selectedZone?.id === z.id)}
             eventHandlers={{
               click: () => {
-                setSelectedZone(z);
+                setSelectedZone({ ...z }); // ✅ FIX
                 setSelectedPlane(null);
               }
             }}
@@ -291,7 +293,7 @@ export default function MapPanel() {
             icon={planeIcon}
             eventHandlers={{
               click: () => {
-                setSelectedPlane(plane);
+                setSelectedPlane({ ...plane }); // ✅ FIX
                 setSelectedZone(null);
               }
             }}
