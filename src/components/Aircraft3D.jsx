@@ -19,7 +19,7 @@ function Plane({ speed, setStats }) {
   const keys = useRef({});
   const [cockpit, setCockpit] = useState(false);
 
-  // FIX MODEL
+  // FIX MODEL SIZE
   useEffect(() => {
     if (model) {
       model.traverse((c) => {
@@ -28,9 +28,8 @@ function Plane({ speed, setStats }) {
           c.receiveShadow = true;
         }
       });
-
-      model.scale.set(0.02, 0.02, 0.02); // FIX SIZE
-      model.rotation.y = Math.PI;
+      model.scale.set(0.35, 0.35, 0.35); // ✅ Bigger scale
+      model.rotation.y = Math.PI; // face forward
     }
   }, [model]);
 
@@ -38,17 +37,14 @@ function Plane({ speed, setStats }) {
   useEffect(() => {
     const down = (e) => {
       keys.current[e.key.toLowerCase()] = true;
-
       if (e.code === "Space") shoot();
       if (e.key.toLowerCase() === "m") shootMissile();
       if (e.key.toLowerCase() === "c") setCockpit((v) => !v);
     };
-
     const up = (e) => (keys.current[e.key.toLowerCase()] = false);
 
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
-
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
@@ -57,23 +53,17 @@ function Plane({ speed, setStats }) {
 
   const shoot = () => {
     if (!planeRef.current) return;
-
     bullets.push({
       position: planeRef.current.position.clone(),
-      direction: new THREE.Vector3(0, 0, -1).applyEuler(
-        planeRef.current.rotation
-      ),
+      direction: new THREE.Vector3(0, 0, -1).applyEuler(planeRef.current.rotation),
     });
   };
 
   const shootMissile = () => {
     if (!planeRef.current) return;
-
     missiles.push({
       position: planeRef.current.position.clone(),
-      direction: new THREE.Vector3(0, 0, -1).applyEuler(
-        planeRef.current.rotation
-      ),
+      direction: new THREE.Vector3(0, 0, -1).applyEuler(planeRef.current.rotation),
     });
   };
 
@@ -87,21 +77,13 @@ function Plane({ speed, setStats }) {
     if (keys.current["a"]) rotation.current.yaw += 0.01;
     if (keys.current["d"]) rotation.current.yaw -= 0.01;
 
-    if (keys.current["a"]) rotation.current.roll = 0.4;
-    else if (keys.current["d"]) rotation.current.roll = -0.4;
-    else rotation.current.roll *= 0.92;
+    rotation.current.roll = keys.current["a"] ? 0.4 : keys.current["d"] ? -0.4 : rotation.current.roll * 0.92;
 
-    p.rotation.set(
-      rotation.current.pitch,
-      rotation.current.yaw,
-      rotation.current.roll
-    );
+    p.rotation.set(rotation.current.pitch, rotation.current.yaw, rotation.current.roll);
 
     const forward = new THREE.Vector3(0, 0, -1).applyEuler(p.rotation);
-
     let currentSpeed = speed;
     if (keys.current["shift"]) currentSpeed *= 2.5;
-
     forward.multiplyScalar(currentSpeed);
     velocity.current.lerp(forward, 0.03);
 
@@ -110,44 +92,24 @@ function Plane({ speed, setStats }) {
     velocity.current.y -= 0.0015;
 
     p.position.add(velocity.current);
-    if (p.position.y < 3) p.position.y = 3;
+    if (p.position.y < 2) p.position.y = 2; // lower start
 
     // MOVE WORLD
     scene.children.forEach((obj) => {
-      if (obj.name === "world") {
-        obj.position.z += currentSpeed * 25;
-      }
+      if (obj.name === "world") obj.position.z += currentSpeed * 25;
     });
 
-    // CAMERA MODES
-    if (cockpit) {
-      const cockpitPos = new THREE.Vector3(0, 2, 2);
-      cockpitPos.applyEuler(p.rotation);
-
-      camera.position.lerp(
-        p.position.clone().add(cockpitPos),
-        0.2
-      );
-    } else {
-      const camOffset = new THREE.Vector3(0, 6, 18);
-      camOffset.applyEuler(p.rotation);
-
-      camera.position.lerp(
-        p.position.clone().add(camOffset),
-        0.08
-      );
-    }
-
+    // CAMERA
+    const camOffset = cockpit ? new THREE.Vector3(0, 1.5, 3) : new THREE.Vector3(0, 4, 10);
+    camOffset.applyEuler(p.rotation);
+    camera.position.lerp(p.position.clone().add(camOffset), cockpit ? 0.2 : 0.08);
     camera.lookAt(p.position);
 
-    setStats({
-      speed: currentSpeed.toFixed(2),
-      altitude: p.position.y.toFixed(1),
-    });
+    setStats({ speed: currentSpeed.toFixed(2), altitude: p.position.y.toFixed(1) });
   });
 
   return (
-    <group ref={planeRef} position={[0, 5, 0]}>
+    <group ref={planeRef} position={[0, 3, 0]}>
       <primitive object={model} />
     </group>
   );
@@ -161,7 +123,6 @@ function Weapons({ targets, setHits }) {
     // BULLETS
     bullets.forEach((b, i) => {
       b.position.add(b.direction.clone().multiplyScalar(2));
-
       targets.current.forEach((t, ti) => {
         if (b.position.distanceTo(t.position) < 2) {
           explosions.push({ position: t.position.clone(), life: 20 });
@@ -175,7 +136,6 @@ function Weapons({ targets, setHits }) {
     // MISSILES
     missiles.forEach((m, i) => {
       m.position.add(m.direction.clone().multiplyScalar(1));
-
       targets.current.forEach((t, ti) => {
         if (m.position.distanceTo(t.position) < 3) {
           explosions.push({ position: t.position.clone(), life: 40 });
@@ -195,7 +155,6 @@ function Weapons({ targets, setHits }) {
           <meshStandardMaterial color="red" />
         </mesh>
       ))}
-
       {missiles.map((m, i) => (
         <mesh key={"m" + i} position={m.position}>
           <coneGeometry args={[0.5, 2]} />
@@ -306,28 +265,25 @@ export default function FlightSimulation() {
   return (
     <div style={{ width: "100vw", height: "100vh" }}>
       <HUD stats={stats} hits={hits} />
-
       <Canvas shadows camera={{ position: [0, 5, 12] }}>
         <color attach="background" args={["#87CEEB"]} />
         <fog attach="fog" args={["#87CEEB", 20, 600]} />
-
         <ambientLight intensity={0.3} />
         <directionalLight position={[100, 100, 50]} intensity={1.5} />
-
         <Sky sunPosition={[100, 20, 100]} />
-
         <group name="world">
           <Clouds />
           <Targets targets={targets} />
         </group>
-
         <Suspense fallback={null}>
           <Plane speed={0.12} setStats={setStats} />
         </Suspense>
-
         <Weapons targets={targets} setHits={setHits} />
         <Explosions />
       </Canvas>
     </div>
   );
 }
+
+
+✅ Key Fixes:
