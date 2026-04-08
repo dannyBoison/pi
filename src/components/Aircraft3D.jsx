@@ -29,7 +29,7 @@ function Plane({ speed, setStats }) {
         }
       });
 
-      model.scale.set(3.5, 3.5, 3.5); // 🔥 BIG FIX
+      model.scale.set(2.5, 2.5, 2.5); // 🔥 BIG FIX
       model.rotation.y = Math.PI;
     }
   }, [model]);
