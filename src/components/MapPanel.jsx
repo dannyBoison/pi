@@ -1,9 +1,3 @@
-the waeather psl it wrks y searching the city first the the zone is plane on the city thne i press on gnerte wheterh before the weather of the plane is seen and ehwhni press on the whether icon i hav e to see the deatils on the sidebar that is all 
-just do this fixes in this code pls 
-thecity seartch before the wehter report is gooten is not working so far the zone is just on accra 
-but it has to move 
-do this fixes only pls do not change my plane searching or tracking code do not even go and touvh that placen oo
-do the fixes and give me the whole code back for the city serch befre the weather zone of theat city is gotten whic the search zone can be made big or small in radiu s
 
 import React, { useState, useEffect } from "react";
 import {
