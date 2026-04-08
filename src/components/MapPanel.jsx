@@ -84,6 +84,7 @@ export default function MapPanel() {
 
   const [selectedPlane, setSelectedPlane] = useState(null);
   const [selectedZone, setSelectedZone] = useState(null);
+  const [searchCity, setSearchCity] = useState("");
 
   const WEATHER_API = import.meta.env.VITE_WEATHER_API_KEY;
 
@@ -119,7 +120,7 @@ export default function MapPanel() {
         else if (wind > 8 || weatherMain === "Clouds") type = "caution";
 
         newZones.push({
-          id: Math.random(), // ✅ FIX: unique id
+          id: Math.random(),
           ...p,
           type,
           weather: {
@@ -135,7 +136,7 @@ export default function MapPanel() {
     }
 
     setZones(newZones);
-    setSelectedZone(null); // reset selection
+    setSelectedZone(null);
   };
 
   // ================= FETCH FLIGHTS =================
@@ -211,11 +212,24 @@ export default function MapPanel() {
     return () => clearInterval(interval);
   }, [startTracking]);
 
+  // ================= HANDLE CITY SEARCH =================
+  const filteredAirports = airports.filter(a =>
+    a.name.toLowerCase().includes(searchCity.toLowerCase())
+  );
+
   return (
     <div style={{ display: "flex" }}>
       {/* SIDEBAR */}
       <div style={{ width: "300px", background: "#0f172a", color: "white", padding: "20px" }}>
         <h2>✈ Smart Flight System</h2>
+
+        <input
+          type="text"
+          placeholder="Search city or airport"
+          value={searchCity}
+          onChange={(e) => setSearchCity(e.target.value)}
+          style={{ width: "100%", padding: 8, borderRadius: 6, border: "none", marginBottom: 10 }}
+        />
 
         <button onClick={() => setStartTracking(true)} style={btnPrimary}>
           Start Tracking
@@ -258,7 +272,8 @@ export default function MapPanel() {
       <MapContainer center={center} zoom={6} style={{ height: "100vh", width: "100%" }}>
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-        {airports.map((a, i) => (
+        {/* AIRPORTS */}
+        {filteredAirports.map((a, i) => (
           <Marker key={i} position={a.coords} icon={airportIcon}>
             <Popup>{a.name}</Popup>
           </Marker>
@@ -272,7 +287,7 @@ export default function MapPanel() {
             icon={createZoneIcon(z.weather.main, z.type, selectedZone?.id === z.id)}
             eventHandlers={{
               click: () => {
-                setSelectedZone({ ...z }); // ✅ FIX
+                setSelectedZone({ ...z }); // ✅ immediately set pre-fetched data
                 setSelectedPlane(null);
               }
             }}
@@ -293,7 +308,7 @@ export default function MapPanel() {
             icon={planeIcon}
             eventHandlers={{
               click: () => {
-                setSelectedPlane({ ...plane }); // ✅ FIX
+                setSelectedPlane({ ...plane });
                 setSelectedZone(null);
               }
             }}
