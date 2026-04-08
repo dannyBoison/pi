@@ -19,9 +19,18 @@ function Plane({ speed, setStats }) {
   const keys = useRef({});
   const [cockpit, setCockpit] = useState(false);
 
-  // 🔥 FIX MODEL SIZE (BIG)
+  // 🔥 FIX MODEL SIZE (SLIGHTLY SMALLER)
   useEffect(() => {
     if (model) {
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const scale = 1.2 / maxDim; // smaller than before
+
+      model.scale.set(scale, scale, scale);
+
       model.traverse((c) => {
         if (c.isMesh) {
           c.castShadow = true;
@@ -29,7 +38,6 @@ function Plane({ speed, setStats }) {
         }
       });
 
-      model.scale.set(2.5, 2.5, 2.5); // 🔥 BIG FIX
       model.rotation.y = Math.PI;
     }
   }, [model]);
