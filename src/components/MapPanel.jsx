@@ -154,7 +154,7 @@ export default function MapPanel() {
 
       const cityCoords = [data[0].lat, data[0].lon];
       setCenter(cityCoords);
-      generateZonesFromWeather(cityCoords);
+      setZones([]); // clear previous zones
     } catch (err) {
       console.error("City search error:", err);
     }
@@ -392,6 +392,3 @@ const card = {
   borderRadius: 8,
   marginTop: 10
 };
-What is this?
-
-✅ Features Added / Fixed:
