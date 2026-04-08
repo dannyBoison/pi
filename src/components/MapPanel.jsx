@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import {
   MapContainer,
@@ -102,7 +101,7 @@ export default function MapPanel() {
   };
 
   // ================= GENERATE WEATHER =================
-  const generateZonesFromWeather = async (baseCoords = center) => {
+  const generateZonesFromWeather = async (baseCoords) => {
     const randomPoints = generateRandomPoints(baseCoords, 8);
     const newZones = [];
 
@@ -151,11 +150,14 @@ export default function MapPanel() {
         `https://api.openweathermap.org/geo/1.0/direct?q=${searchCity}&limit=1&appid=${WEATHER_API}`
       );
       const data = await res.json();
-      if (data.length === 0) return;
+      if (!data || data.length === 0) return;
 
+      // ✅ Wait for city coords first
       const cityCoords = [data[0].lat, data[0].lon];
       setCenter(cityCoords);
-      generateZonesFromWeather(cityCoords);
+
+      // ✅ Generate weather zones only after city coords are set
+      await generateZonesFromWeather(cityCoords);
     } catch (err) {
       console.error("City search error:", err);
     }
@@ -255,7 +257,7 @@ export default function MapPanel() {
         <form onSubmit={handleCitySearch}>
           <input
             type="text"
-            placeholder="Search city or airport"
+            placeholder="Enter city or airport"
             value={searchCity}
             onChange={(e) => setSearchCity(e.target.value)}
             style={{ width: "100%", padding: 8, borderRadius: 6, border: "none", marginBottom: 10 }}
@@ -313,7 +315,6 @@ export default function MapPanel() {
       <MapContainer center={center} zoom={6} style={{ height: "100vh", width: "100%" }}>
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-        {/* MOVE MAP TO SEARCH CITY */}
         <MoveMap coords={center} />
 
         {/* AIRPORTS */}
@@ -331,7 +332,7 @@ export default function MapPanel() {
             icon={createZoneIcon(z.weather.main, z.type, selectedZone?.id === z.id)}
             eventHandlers={{
               click: () => {
-                setSelectedZone({ ...z }); // instant display
+                setSelectedZone({ ...z });
                 setSelectedPlane(null);
               }
             }}
@@ -393,6 +394,3 @@ const card = {
   borderRadius: 8,
   marginTop: 10
 };
-
-
-✅ Features Added / Fixed:
