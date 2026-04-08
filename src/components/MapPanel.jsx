@@ -5,8 +5,7 @@ import {
   Marker,
   Popup,
   Circle,
-  Polyline,
-  useMap
+  Polyline
 } from "react-leaflet";
 
 import L from "leaflet";
@@ -75,8 +74,8 @@ const createZoneIcon = (weatherMain, zoneType, isSelected) => {
 // ================= COMPONENT =================
 export default function MapPanel() {
   const [zones, setZones] = useState([]);
-  const [center, setCenter] = useState([5.6051, -0.1662]);
-  const [radius, setRadius] = useState(150); // km
+  const [center] = useState([5.6051, -0.1662]);
+  const [radius] = useState(150);
 
   const [planes, setPlanes] = useState({});
   const [planeTrails, setPlaneTrails] = useState({});
@@ -85,24 +84,23 @@ export default function MapPanel() {
 
   const [selectedPlane, setSelectedPlane] = useState(null);
   const [selectedZone, setSelectedZone] = useState(null);
-  const [searchCity, setSearchCity] = useState("");
 
   const WEATHER_API = import.meta.env.VITE_WEATHER_API_KEY;
 
-  // ================= RANDOM WEATHER POINTS =================
-  const generateRandomPoints = (centerCoords, count = 8) => {
+  // ================= RANDOM WEATHER =================
+  const generateRandomPoints = (count = 8) => {
     const points = [];
     for (let i = 0; i < count; i++) {
-      const lat = centerCoords[0] + (Math.random() - 0.5) * (radius / 50);
-      const lng = centerCoords[1] + (Math.random() - 0.5) * (radius / 50);
+      const lat = center[0] + (Math.random() - 0.5) * (radius / 50);
+      const lng = center[1] + (Math.random() - 0.5) * (radius / 50);
       points.push({ lat, lng });
     }
     return points;
   };
 
-  // ================= GENERATE WEATHER =================
-  const generateZonesFromWeather = async (baseCoords) => {
-    const randomPoints = generateRandomPoints(baseCoords, 8);
+  // ================= WEATHER =================
+  const generateZonesFromWeather = async () => {
+    const randomPoints = generateRandomPoints(8);
     const newZones = [];
 
     for (let p of randomPoints) {
@@ -121,7 +119,7 @@ export default function MapPanel() {
         else if (wind > 8 || weatherMain === "Clouds") type = "caution";
 
         newZones.push({
-          id: Math.random(),
+          id: Math.random(), // ✅ FIX: unique id
           ...p,
           type,
           weather: {
@@ -137,30 +135,7 @@ export default function MapPanel() {
     }
 
     setZones(newZones);
-    setSelectedZone(null);
-  };
-
-  // ================= SEARCH CITY =================
-  const handleCitySearch = async (e) => {
-    e.preventDefault();
-    if (!searchCity) return;
-
-    try {
-      const res = await fetch(
-        `https://api.openweathermap.org/geo/1.0/direct?q=${searchCity}&limit=1&appid=${WEATHER_API}`
-      );
-      const data = await res.json();
-      if (!data || data.length === 0) return;
-
-      // ✅ Wait for city coords first
-      const cityCoords = [data[0].lat, data[0].lon];
-      setCenter(cityCoords);
-
-      // ✅ Generate weather zones only after city coords are set
-      await generateZonesFromWeather(cityCoords);
-    } catch (err) {
-      console.error("City search error:", err);
-    }
+    setSelectedZone(null); // reset selection
   };
 
   // ================= FETCH FLIGHTS =================
@@ -210,7 +185,7 @@ export default function MapPanel() {
     }
   };
 
-  // ================= SMOOTH PLANE MOVEMENT =================
+  // ================= SMOOTH MOVEMENT =================
   useEffect(() => {
     const interval = setInterval(() => {
       setPlanes(prev => {
@@ -236,49 +211,17 @@ export default function MapPanel() {
     return () => clearInterval(interval);
   }, [startTracking]);
 
-  // ================= FILTERED AIRPORTS =================
-  const filteredAirports = airports.filter(a =>
-    a.name.toLowerCase().includes(searchCity.toLowerCase())
-  );
-
-  // ================= MAP MOVE =================
-  const MoveMap = ({ coords }) => {
-    const map = useMap();
-    map.setView(coords, 8);
-    return null;
-  };
-
   return (
     <div style={{ display: "flex" }}>
       {/* SIDEBAR */}
       <div style={{ width: "300px", background: "#0f172a", color: "white", padding: "20px" }}>
         <h2>✈ Smart Flight System</h2>
 
-        <form onSubmit={handleCitySearch}>
-          <input
-            type="text"
-            placeholder="Enter city or airport"
-            value={searchCity}
-            onChange={(e) => setSearchCity(e.target.value)}
-            style={{ width: "100%", padding: 8, borderRadius: 6, border: "none", marginBottom: 10 }}
-          />
-        </form>
-
-        <label>
-          Radius (km):
-          <input
-            type="number"
-            value={radius}
-            onChange={(e) => setRadius(Number(e.target.value))}
-            style={{ width: "100%", padding: 8, borderRadius: 6, border: "none", marginTop: 5 }}
-          />
-        </label>
-
         <button onClick={() => setStartTracking(true)} style={btnPrimary}>
           Start Tracking
         </button>
 
-        <button onClick={() => generateZonesFromWeather(center)} style={btn}>
+        <button onClick={generateZonesFromWeather} style={btn}>
           Generate Weather
         </button>
 
@@ -315,16 +258,13 @@ export default function MapPanel() {
       <MapContainer center={center} zoom={6} style={{ height: "100vh", width: "100%" }}>
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-        <MoveMap coords={center} />
-
-        {/* AIRPORTS */}
-        {filteredAirports.map((a, i) => (
+        {airports.map((a, i) => (
           <Marker key={i} position={a.coords} icon={airportIcon}>
             <Popup>{a.name}</Popup>
           </Marker>
         ))}
 
-        {/* WEATHER ZONES */}
+        {/* WEATHER */}
         {zones.map((z) => (
           <Marker
             key={z.id}
@@ -332,7 +272,7 @@ export default function MapPanel() {
             icon={createZoneIcon(z.weather.main, z.type, selectedZone?.id === z.id)}
             eventHandlers={{
               click: () => {
-                setSelectedZone({ ...z });
+                setSelectedZone({ ...z }); // ✅ FIX
                 setSelectedPlane(null);
               }
             }}
@@ -353,7 +293,7 @@ export default function MapPanel() {
             icon={planeIcon}
             eventHandlers={{
               click: () => {
-                setSelectedPlane({ ...plane });
+                setSelectedPlane({ ...plane }); // ✅ FIX
                 setSelectedZone(null);
               }
             }}
