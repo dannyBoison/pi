@@ -74,8 +74,8 @@ const createZoneIcon = (weatherMain, zoneType, isSelected) => {
 // ================= COMPONENT =================
 export default function MapPanel() {
   const [zones, setZones] = useState([]);
-  const [center] = useState([5.6051, -0.1662]);
-  const [radius] = useState(150);
+  const [center, setCenter] = useState([5.6051, -0.1662]); // default Accra
+  const [radius, setRadius] = useState(150); // km
 
   const [planes, setPlanes] = useState({});
   const [planeTrails, setPlaneTrails] = useState({});
@@ -86,6 +86,9 @@ export default function MapPanel() {
   const [selectedZone, setSelectedZone] = useState(null);
 
   const WEATHER_API = import.meta.env.VITE_WEATHER_API_KEY;
+
+  const [cityInput, setCityInput] = useState("Accra");
+  const [radiusInput, setRadiusInput] = useState(radius);
 
   // ================= RANDOM WEATHER =================
   const generateRandomPoints = (count = 8) => {
@@ -119,7 +122,7 @@ export default function MapPanel() {
         else if (wind > 8 || weatherMain === "Clouds") type = "caution";
 
         newZones.push({
-          id: Math.random(), // ✅ FIX: unique id
+          id: Math.random(),
           ...p,
           type,
           weather: {
@@ -135,7 +138,26 @@ export default function MapPanel() {
     }
 
     setZones(newZones);
-    setSelectedZone(null); // reset selection
+    setSelectedZone(null);
+  };
+
+  // ================= CITY SEARCH =================
+  const updateCenter = async () => {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${cityInput}`
+      );
+      const data = await res.json();
+      if (data[0]) {
+        setCenter([parseFloat(data[0].lat), parseFloat(data[0].lon)]);
+        setRadius(Number(radiusInput));
+      } else {
+        alert("City not found!");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error fetching city coordinates");
+    }
   };
 
   // ================= FETCH FLIGHTS =================
@@ -217,6 +239,24 @@ export default function MapPanel() {
       <div style={{ width: "300px", background: "#0f172a", color: "white", padding: "20px" }}>
         <h2>✈ Smart Flight System</h2>
 
+        <div style={{ marginTop: 10 }}>
+          <input
+            type="text"
+            value={cityInput}
+            onChange={e => setCityInput(e.target.value)}
+            placeholder="Enter city"
+            style={{ width: "60%", padding: 5 }}
+          />
+          <input
+            type="number"
+            value={radiusInput}
+            onChange={e => setRadiusInput(e.target.value)}
+            placeholder="Radius (km)"
+            style={{ width: "35%", marginLeft: "5%", padding: 5 }}
+          />
+          <button onClick={updateCenter} style={{ ...btn, marginLeft: 0, marginTop: 5 }}>Set City</button>
+        </div>
+
         <button onClick={() => setStartTracking(true)} style={btnPrimary}>
           Start Tracking
         </button>
@@ -272,7 +312,7 @@ export default function MapPanel() {
             icon={createZoneIcon(z.weather.main, z.type, selectedZone?.id === z.id)}
             eventHandlers={{
               click: () => {
-                setSelectedZone({ ...z }); // ✅ FIX
+                setSelectedZone({ ...z });
                 setSelectedPlane(null);
               }
             }}
@@ -293,7 +333,7 @@ export default function MapPanel() {
             icon={planeIcon}
             eventHandlers={{
               click: () => {
-                setSelectedPlane({ ...plane }); // ✅ FIX
+                setSelectedPlane({ ...plane });
                 setSelectedZone(null);
               }
             }}
