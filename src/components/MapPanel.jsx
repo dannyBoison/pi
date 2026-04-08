@@ -312,7 +312,7 @@ export default function MapPanel() {
             icon={createZoneIcon(z.weather.main, z.type, selectedZone?.id === z.id)}
             eventHandlers={{
               click: () => {
-                setSelectedZone({ ...z });
+                setSelectedZone(z); // ✅ sidebar updates now
                 setSelectedPlane(null);
               }
             }}
@@ -333,7 +333,7 @@ export default function MapPanel() {
             icon={planeIcon}
             eventHandlers={{
               click: () => {
-                setSelectedPlane({ ...plane });
+                setSelectedPlane(plane);
                 setSelectedZone(null);
               }
             }}
