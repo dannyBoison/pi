@@ -27,7 +27,7 @@ function Plane({ speed, setStats }) {
       box.getSize(size);
 
       const maxDim = Math.max(size.x, size.y, size.z);
-      const scale = 1.5 / maxDim; // smaller than before
+      const scale = 2.o / maxDim; // smaller than before
 
       model.scale.set(scale, scale, scale);
 
