@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, Suspense } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree, useLoader } from "@react-three/fiber";
 import { Sky, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 
@@ -10,16 +10,17 @@ const explosions = [];
 
 // ================= GROUND MAP =================
 function Ground() {
-  const texture = new THREE.TextureLoader().load(
-    "https://tile.openstreetmap.org/0/0/0.png" // 🔥 simple map texture (you can upgrade later)
+  const texture = useLoader(
+    THREE.TextureLoader,
+    "https://threejsfundamentals.org/threejs/resources/images/checker.png"
   );
 
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(50, 50); // 🔥 makes it tile (important)
+  texture.repeat.set(100, 100); // 🔥 VERY IMPORTANT
 
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
-      <planeGeometry args={[2000, 2000]} />
+      <planeGeometry args={[5000, 5000]} /> {/* 🔥 BIGGER */}
       <meshStandardMaterial map={texture} />
     </mesh>
   );
@@ -43,7 +44,7 @@ function Plane({ speed, setStats }) {
       box.getSize(size);
 
       const maxDim = Math.max(size.x, size.y, size.z);
-      const scale = 2.0 / maxDim; // ✅ FIXED
+      const scale = 2.0 / maxDim;
 
       model.scale.set(scale, scale, scale);
 
@@ -128,7 +129,7 @@ function Plane({ speed, setStats }) {
     p.position.add(velocity.current);
     if (p.position.y < 2) p.position.y = 2;
 
-    // 🔥 MOVE WORLD (INCLUDING GROUND)
+    // MOVE WORLD
     scene.children.forEach((obj) => {
       if (obj.name === "world") obj.position.z += currentSpeed * 25;
     });
@@ -199,7 +200,7 @@ export default function FlightSimulation() {
         <Sky sunPosition={[100, 20, 100]} />
 
         <group name="world">
-          <Ground /> {/* 🔥 NEW MAP */}
+          <Ground />
           <Clouds />
         </group>
 
