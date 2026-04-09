@@ -8,6 +8,23 @@ const bullets = [];
 const missiles = [];
 const explosions = [];
 
+// ================= GROUND MAP =================
+function Ground() {
+  const texture = new THREE.TextureLoader().load(
+    "https://tile.openstreetmap.org/0/0/0.png" // 🔥 simple map texture (you can upgrade later)
+  );
+
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(50, 50); // 🔥 makes it tile (important)
+
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+      <planeGeometry args={[2000, 2000]} />
+      <meshStandardMaterial map={texture} />
+    </mesh>
+  );
+}
+
 // ================= PLANE =================
 function Plane({ speed, setStats }) {
   const planeRef = useRef();
@@ -19,7 +36,6 @@ function Plane({ speed, setStats }) {
   const keys = useRef({});
   const [cockpit, setCockpit] = useState(false);
 
-  // 🔥 FIX MODEL SIZE (SLIGHTLY SMALLER)
   useEffect(() => {
     if (model) {
       const box = new THREE.Box3().setFromObject(model);
@@ -27,7 +43,7 @@ function Plane({ speed, setStats }) {
       box.getSize(size);
 
       const maxDim = Math.max(size.x, size.y, size.z);
-      const scale = 2.o / maxDim; // smaller than before
+      const scale = 2.0 / maxDim; // ✅ FIXED
 
       model.scale.set(scale, scale, scale);
 
@@ -42,7 +58,6 @@ function Plane({ speed, setStats }) {
     }
   }, [model]);
 
-  // INPUTS
   useEffect(() => {
     const down = (e) => {
       keys.current[e.key.toLowerCase()] = true;
@@ -81,7 +96,6 @@ function Plane({ speed, setStats }) {
     const p = planeRef.current;
     if (!p) return;
 
-    // CONTROLS
     if (keys.current["w"]) rotation.current.pitch += 0.008;
     if (keys.current["s"]) rotation.current.pitch -= 0.008;
     if (keys.current["a"]) rotation.current.yaw += 0.01;
@@ -114,12 +128,11 @@ function Plane({ speed, setStats }) {
     p.position.add(velocity.current);
     if (p.position.y < 2) p.position.y = 2;
 
-    // MOVE WORLD
+    // 🔥 MOVE WORLD (INCLUDING GROUND)
     scene.children.forEach((obj) => {
       if (obj.name === "world") obj.position.z += currentSpeed * 25;
     });
 
-    // 🔥 CAMERA FIX (CLOSER)
     const camOffset = cockpit
       ? new THREE.Vector3(0, 1.5, 3)
       : new THREE.Vector3(0, 2, 6);
@@ -143,55 +156,6 @@ function Plane({ speed, setStats }) {
     <group ref={planeRef} position={[0, 2.5, 0]}>
       <primitive object={model} />
     </group>
-  );
-}
-
-// ================= WEAPONS =================
-function Weapons({ targets, setHits }) {
-  useFrame(() => {
-    bullets.forEach((b, i) => {
-      b.position.add(b.direction.clone().multiplyScalar(3));
-
-      targets.current.forEach((t, ti) => {
-        if (b.position.distanceTo(t.position) < 3) {
-          explosions.push({ position: t.position.clone(), life: 20 });
-          targets.current.splice(ti, 1);
-          bullets.splice(i, 1);
-          setHits((h) => h + 1);
-        }
-      });
-    });
-
-    missiles.forEach((m, i) => {
-      m.position.add(m.direction.clone().multiplyScalar(2));
-
-      targets.current.forEach((t, ti) => {
-        if (m.position.distanceTo(t.position) < 4) {
-          explosions.push({ position: t.position.clone(), life: 40 });
-          targets.current.splice(ti, 1);
-          missiles.splice(i, 1);
-          setHits((h) => h + 2);
-        }
-      });
-    });
-  });
-
-  return (
-    <>
-      {bullets.map((b, i) => (
-        <mesh key={"b" + i} position={b.position}>
-          <sphereGeometry args={[0.6]} />
-          <meshStandardMaterial color="red" />
-        </mesh>
-      ))}
-
-      {missiles.map((m, i) => (
-        <mesh key={"m" + i} position={m.position}>
-          <coneGeometry args={[1, 3]} />
-          <meshStandardMaterial color="yellow" />
-        </mesh>
-      ))}
-    </>
   );
 }
 
@@ -222,8 +186,6 @@ function Clouds() {
 // ================= MAIN =================
 export default function FlightSimulation() {
   const [stats, setStats] = useState({ speed: 0, altitude: 0 });
-  const [hits, setHits] = useState(0);
-  const targets = useRef([]);
 
   return (
     <div style={{ width: "100vw", height: "100vh" }}>
@@ -237,14 +199,13 @@ export default function FlightSimulation() {
         <Sky sunPosition={[100, 20, 100]} />
 
         <group name="world">
+          <Ground /> {/* 🔥 NEW MAP */}
           <Clouds />
         </group>
 
         <Suspense fallback={null}>
           <Plane speed={0.12} setStats={setStats} />
         </Suspense>
-
-        <Weapons targets={targets} setHits={setHits} />
       </Canvas>
     </div>
   );
