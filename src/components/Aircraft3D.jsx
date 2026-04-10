@@ -1,47 +1,100 @@
 import React, { useRef, useState, useEffect, Suspense } from "react";
-import { Canvas, useFrame, useThree, useLoader } from "@react-three/fiber";
-import { Sky, useGLTF } from "@react-three/drei";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Sky, useGLTF, useTexture } from "@react-three/drei";
 import * as THREE from "three";
 
-// ================= GROUND =================
-function Ground({ planeRef, mapUrl }) {
-  const texture = useLoader(THREE.TextureLoader, mapUrl);
+// ================= TILE =================
+function Tile({ url, position, size }) {
+  const texture = useTexture(url);
 
-  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(20, 20);
-
-  const groundRef = useRef();
-
-  useFrame(() => {
-    if (!planeRef.current) return;
-
-    // follow plane (infinite illusion)
-    groundRef.current.position.x = planeRef.current.position.x;
-    groundRef.current.position.z = planeRef.current.position.z;
-  });
+  texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
 
   return (
-    <mesh ref={groundRef} rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[5000, 5000]} />
+    <mesh position={position} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[size, size]} />
       <meshStandardMaterial map={texture} />
     </mesh>
   );
 }
 
-// ================= GET TILE =================
-function getTileUrl(lat, lon, zoom = 12) {
-  const x = Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
-  const y = Math.floor(
-    ((1 -
-      Math.log(
-        Math.tan((lat * Math.PI) / 180) +
-        1 / Math.cos((lat * Math.PI) / 180)
-      ) /
-      Math.PI) / 2) *
-      Math.pow(2, zoom)
-  );
+// ================= GROUND =================
+function Ground({ planeRef, center }) {
+  const zoom = 14;
+  const tileSize = 120;
 
-  return `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
+  const [tiles, setTiles] = useState([]);
+
+  const latLonToTile = (lat, lon) => {
+    const x = ((lon + 180) / 360) * Math.pow(2, zoom);
+    const y =
+      ((1 -
+        Math.log(
+          Math.tan((lat * Math.PI) / 180) +
+          1 / Math.cos((lat * Math.PI) / 180)
+        ) /
+          Math.PI) /
+      2 *
+      Math.pow(2, zoom);
+    return { x, y };
+  };
+
+  const baseTile = useRef({ x: 0, y: 0 });
+
+  // 🔥 LOAD CITY MAP
+  useEffect(() => {
+    const { x, y } = latLonToTile(center.lat, center.lon);
+
+    baseTile.current = {
+      x: Math.floor(x),
+      y: Math.floor(y),
+    };
+
+    const grid = [];
+
+    for (let i = -2; i <= 2; i++) {
+      for (let j = -2; j <= 2; j++) {
+        grid.push({
+          x: baseTile.current.x + i,
+          y: baseTile.current.y + j,
+          offset: [i * tileSize, 0, j * tileSize],
+        });
+      }
+    }
+
+    setTiles(grid);
+  }, [center]);
+
+  // 🔥 MOVE WITH PLANE (SMOOTH)
+  useFrame(() => {
+    if (!planeRef.current) return;
+
+    const px = planeRef.current.position.x * 0.02;
+    const pz = planeRef.current.position.z * 0.02;
+
+    setTiles((prev) =>
+      prev.map((tile) => ({
+        ...tile,
+        position: [
+          tile.offset[0] - px,
+          0,
+          tile.offset[2] - pz,
+        ],
+      }))
+    );
+  });
+
+  return (
+    <>
+      {tiles.map((tile, i) => (
+        <Tile
+          key={i}
+          url={`https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`}
+          position={tile.position || tile.offset}
+          size={tileSize}
+        />
+      ))}
+    </>
+  );
 }
 
 // ================= PLANE =================
@@ -123,14 +176,13 @@ export default function FlightSimulation() {
   const planeRef = useRef();
 
   const [city, setCity] = useState("");
-  const [mapUrl, setMapUrl] = useState(
-    "https://tile.openstreetmap.org/12/2048/1362.png" // default Accra
-  );
+  const [center, setCenter] = useState({
+    lat: 5.6037,
+    lon: -0.1870,
+  });
 
   const handleSearch = async (e) => {
     e.preventDefault();
-
-    if (!city) return;
 
     const res = await fetch(
       `https://nominatim.openstreetmap.org/search?format=json&q=${city}`
@@ -139,11 +191,12 @@ export default function FlightSimulation() {
 
     if (!data.length) return alert("City not found");
 
-    const lat = parseFloat(data[0].lat);
-    const lon = parseFloat(data[0].lon);
+    setCenter({
+      lat: parseFloat(data[0].lat),
+      lon: parseFloat(data[0].lon),
+    });
 
-    setMapUrl(getTileUrl(lat, lon));
-
+    // reset plane
     if (planeRef.current) {
       planeRef.current.position.set(0, 2.5, 0);
     }
@@ -152,7 +205,7 @@ export default function FlightSimulation() {
   return (
     <div style={{ width: "100vw", height: "100vh" }}>
 
-      {/* SEARCH UI */}
+      {/* SEARCH */}
       <div style={{
         position: "absolute",
         top: 20,
@@ -167,7 +220,7 @@ export default function FlightSimulation() {
           <input
             value={city}
             onChange={(e) => setCity(e.target.value)}
-            placeholder="Search city (e.g Accra, Kumasi)"
+            placeholder="Search city (Accra, Kumasi, London)"
             style={{ padding: 8 }}
           />
         </form>
@@ -183,7 +236,7 @@ export default function FlightSimulation() {
 
         <Sky sunPosition={[100, 20, 100]} />
 
-        <Ground planeRef={planeRef} mapUrl={mapUrl} />
+        <Ground planeRef={planeRef} center={center} />
 
         <Suspense fallback={null}>
           <Plane speed={0.12} setStats={setStats} ref={planeRef} />
