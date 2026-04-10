@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, Suspense } from "react";
+import React, { useRef, useState, useEffect, Suspense, forwardRef } from "react";
 import { Canvas, useFrame, useThree, useLoader } from "@react-three/fiber";
 import { Sky, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
@@ -9,27 +9,36 @@ const missiles = [];
 const explosions = [];
 
 // ================= GROUND MAP =================
-function Ground() {
+function Ground({ planeRef }) {
   const texture = useLoader(
     THREE.TextureLoader,
-    "https://threejsfundamentals.org/threejs/resources/images/checker.png"
+    "https://threejs.org/examples/textures/land_ocean_ice_cloud_2048.jpg"
   );
 
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(100, 100); // 🔥 VERY IMPORTANT
+  texture.repeat.set(40, 40);
+
+  const groundRef = useRef();
+
+  // 🔥 Infinite ground (follows plane)
+  useFrame(() => {
+    if (planeRef?.current && groundRef.current) {
+      groundRef.current.position.x = planeRef.current.position.x;
+      groundRef.current.position.z = planeRef.current.position.z;
+    }
+  });
 
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
-      <planeGeometry args={[5000, 5000]} /> {/* 🔥 BIGGER */}
+    <mesh ref={groundRef} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[4000, 4000]} />
       <meshStandardMaterial map={texture} />
     </mesh>
   );
 }
 
 // ================= PLANE =================
-function Plane({ speed, setStats }) {
-  const planeRef = useRef();
-  const { camera, scene } = useThree();
+const Plane = forwardRef(({ speed, setStats }, planeRef) => {
+  const { camera } = useThree();
   const { scene: model } = useGLTF("/models/product.glb");
 
   const velocity = useRef(new THREE.Vector3(0, 0, -speed));
@@ -37,6 +46,7 @@ function Plane({ speed, setStats }) {
   const keys = useRef({});
   const [cockpit, setCockpit] = useState(false);
 
+  // FIX MODEL SCALE
   useEffect(() => {
     if (model) {
       const box = new THREE.Box3().setFromObject(model);
@@ -59,6 +69,7 @@ function Plane({ speed, setStats }) {
     }
   }, [model]);
 
+  // INPUTS
   useEffect(() => {
     const down = (e) => {
       keys.current[e.key.toLowerCase()] = true;
@@ -97,6 +108,7 @@ function Plane({ speed, setStats }) {
     const p = planeRef.current;
     if (!p) return;
 
+    // CONTROLS
     if (keys.current["w"]) rotation.current.pitch += 0.008;
     if (keys.current["s"]) rotation.current.pitch -= 0.008;
     if (keys.current["a"]) rotation.current.yaw += 0.01;
@@ -129,11 +141,7 @@ function Plane({ speed, setStats }) {
     p.position.add(velocity.current);
     if (p.position.y < 2) p.position.y = 2;
 
-    // MOVE WORLD
-    scene.children.forEach((obj) => {
-      if (obj.name === "world") obj.position.z += currentSpeed * 25;
-    });
-
+    // CAMERA
     const camOffset = cockpit
       ? new THREE.Vector3(0, 1.5, 3)
       : new THREE.Vector3(0, 2, 6);
@@ -158,7 +166,7 @@ function Plane({ speed, setStats }) {
       <primitive object={model} />
     </group>
   );
-}
+});
 
 // ================= CLOUDS =================
 function Clouds() {
@@ -187,6 +195,7 @@ function Clouds() {
 // ================= MAIN =================
 export default function FlightSimulation() {
   const [stats, setStats] = useState({ speed: 0, altitude: 0 });
+  const planeRef = useRef(); // ✅ IMPORTANT
 
   return (
     <div style={{ width: "100vw", height: "100vh" }}>
@@ -194,18 +203,19 @@ export default function FlightSimulation() {
         <color attach="background" args={["#87CEEB"]} />
         <fog attach="fog" args={["#87CEEB", 10, 300]} />
 
-        <ambientLight intensity={0.4} />
-        <directionalLight position={[50, 50, 20]} intensity={1.5} />
+        {/* ✅ BETTER LIGHTING */}
+        <ambientLight intensity={0.6} />
+        <directionalLight position={[100, 100, 50]} intensity={2} />
 
         <Sky sunPosition={[100, 20, 100]} />
 
         <group name="world">
-          <Ground />
+          <Ground planeRef={planeRef} />
           <Clouds />
         </group>
 
         <Suspense fallback={null}>
-          <Plane speed={0.12} setStats={setStats} />
+          <Plane speed={0.12} setStats={setStats} ref={planeRef} />
         </Suspense>
       </Canvas>
     </div>
