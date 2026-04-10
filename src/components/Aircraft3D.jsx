@@ -1,10 +1,7 @@
+import React, { useRef, useState, useEffect, Suspense } from "react";
+import { Canvas, useFrame, useThree, useLoader } from "@react-three/fiber";
 import { Sky, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
-
-// ================= GLOBAL =================
-const bullets = [];
-const missiles = [];
-const explosions = [];
 
 // ================= TILE =================
 function Tile({ url, position, size }) {
@@ -18,7 +15,7 @@ function Tile({ url, position, size }) {
   );
 }
 
-// ================= GROUND GRID =================
+// ================= GROUND =================
 function Ground({ planeRef, center }) {
   const zoom = 12;
   const tileSize = 120;
@@ -31,15 +28,16 @@ function Ground({ planeRef, center }) {
       ((1 -
         Math.log(
           Math.tan((lat * Math.PI) / 180) +
-            1 / Math.cos((lat * Math.PI) / 180)
+          1 / Math.cos((lat * Math.PI) / 180)
         ) /
-          Math.PI) /
+        Math.PI) /
         2) *
-        Math.pow(2, zoom)
+      Math.pow(2, zoom)
     );
     return { x, y };
   };
 
+  // 🔥 ONLY update when city changes (FIXED lag)
   useEffect(() => {
     if (!center) return;
 
@@ -51,8 +49,7 @@ function Ground({ planeRef, center }) {
       for (let j = -2; j <= 2; j++) {
         grid.push({
           url: `https://tile.openstreetmap.org/${zoom}/${x + i}/${y + j}.png`,
-          baseX: i * tileSize,
-          baseZ: j * tileSize,
+          position: [i * tileSize, 0, j * tileSize],
         });
       }
     }
@@ -60,40 +57,17 @@ function Ground({ planeRef, center }) {
     setTiles(grid);
   }, [center]);
 
-  useFrame(() => {
-    if (!planeRef.current) return;
-
-    const px = planeRef.current.position.x;
-    const pz = planeRef.current.position.z;
-
-    setTiles((prev) =>
-      prev.map((tile) => ({
-        ...tile,
-        pos: [
-          tile.baseX + px * 0.02,
-          0,
-          tile.baseZ + pz * 0.02,
-        ],
-      }))
-    );
-  });
-
   return (
     <>
       {tiles.map((tile, i) => (
-        <Tile
-          key={i}
-          url={tile.url}
-          position={tile.pos || [0, 0, 0]}
-          size={tileSize}
-        />
+        <Tile key={i} {...tile} size={tileSize} />
       ))}
     </>
   );
 }
 
 // ================= PLANE =================
-const Plane = forwardRef(({ speed, setStats }, planeRef) => {
+const Plane = React.forwardRef(({ speed, setStats }, planeRef) => {
   const { camera } = useThree();
   const { scene: model } = useGLTF("/models/product.glb");
 
@@ -103,25 +77,23 @@ const Plane = forwardRef(({ speed, setStats }, planeRef) => {
   const [cockpit, setCockpit] = useState(false);
 
   useEffect(() => {
-    if (model) {
-      const box = new THREE.Box3().setFromObject(model);
-      const size = new THREE.Vector3();
-      box.getSize(size);
+    if (!model) return;
 
-      const maxDim = Math.max(size.x, size.y, size.z);
-      const scale = 2.0 / maxDim;
+    const box = new THREE.Box3().setFromObject(model);
+    const size = new THREE.Vector3();
+    box.getSize(size);
 
-      model.scale.set(scale, scale, scale);
+    const scale = 2 / Math.max(size.x, size.y, size.z);
+    model.scale.set(scale, scale, scale);
 
-      model.traverse((c) => {
-        if (c.isMesh) {
-          c.castShadow = true;
-          c.receiveShadow = true;
-        }
-      });
+    model.traverse((c) => {
+      if (c.isMesh) {
+        c.castShadow = true;
+        c.receiveShadow = true;
+      }
+    });
 
-      model.rotation.y = Math.PI;
-    }
+    model.rotation.y = Math.PI;
   }, [model]);
 
   useEffect(() => {
@@ -134,6 +106,7 @@ const Plane = forwardRef(({ speed, setStats }, planeRef) => {
 
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
+
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
@@ -168,7 +141,7 @@ const Plane = forwardRef(({ speed, setStats }, planeRef) => {
     if (keys.current["shift"]) currentSpeed *= 2.5;
 
     forward.multiplyScalar(currentSpeed);
-    velocity.current.lerp(forward, 0.03);
+    velocity.current.lerp(forward, 0.05);
 
     velocity.current.y += rotation.current.pitch * 0.02;
     velocity.current.y -= 0.0015;
@@ -184,7 +157,7 @@ const Plane = forwardRef(({ speed, setStats }, planeRef) => {
 
     camera.position.lerp(
       p.position.clone().add(camOffset),
-      cockpit ? 0.2 : 0.1
+      0.1
     );
 
     camera.lookAt(p.position);
@@ -205,7 +178,7 @@ const Plane = forwardRef(({ speed, setStats }, planeRef) => {
 // ================= CLOUDS =================
 function Clouds() {
   const clouds = useRef(
-    [...Array(40)].map(() => ({
+    [...Array(30)].map(() => ({
       position: [
         Math.random() * 200 - 100,
         Math.random() * 40 + 10,
@@ -219,7 +192,7 @@ function Clouds() {
       {clouds.current.map((c, i) => (
         <mesh key={i} position={c.position}>
           <sphereGeometry args={[4, 16, 16]} />
-          <meshStandardMaterial transparent opacity={0.8} />
+          <meshStandardMaterial transparent opacity={0.7} />
         </mesh>
       ))}
     </>
@@ -233,19 +206,24 @@ export default function FlightSimulation() {
 
   const [city, setCity] = useState("");
   const [center, setCenter] = useState({
-    lat: 5.6037, // Accra default
+    lat: 5.6037,
     lon: -0.1870,
   });
 
   const handleSearch = async (e) => {
     e.preventDefault();
 
+    if (!city) return;
+
     const res = await fetch(
       `https://nominatim.openstreetmap.org/search?format=json&q=${city}`
     );
     const data = await res.json();
 
-    if (data.length === 0) return alert("City not found");
+    if (data.length === 0) {
+      alert("City not found");
+      return;
+    }
 
     setCenter({
       lat: parseFloat(data[0].lat),
@@ -256,7 +234,6 @@ export default function FlightSimulation() {
   return (
     <div style={{ width: "100vw", height: "100vh" }}>
 
-      {/* 🔍 SEARCH UI */}
       <div style={{
         position: "absolute",
         top: 20,
@@ -289,10 +266,8 @@ export default function FlightSimulation() {
 
         <Sky sunPosition={[100, 20, 100]} />
 
-        <group name="world">
-          <Ground planeRef={planeRef} center={center} />
-          <Clouds />
-        </group>
+        <Ground planeRef={planeRef} center={center} />
+        <Clouds />
 
         <Suspense fallback={null}>
           <Plane speed={0.12} setStats={setStats} ref={planeRef} />
