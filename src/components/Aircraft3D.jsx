@@ -1,5 +1,3 @@
-import React, { useRef, useState, useEffect, Suspense, forwardRef } from "react";
-import { Canvas, useFrame, useThree, useLoader } from "@react-three/fiber";
 import { Sky, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 
@@ -8,42 +6,89 @@ const bullets = [];
 const missiles = [];
 const explosions = [];
 
-// ================= TILE HELPER =================
-function getTileUrl(lat, lon, zoom = 10) {
-  const x = Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
-  const y = Math.floor(
-    ((1 -
-      Math.log(
-        Math.tan((lat * Math.PI) / 180) +
-        1 / Math.cos((lat * Math.PI) / 180)
-      ) /
-      Math.PI) / 2) * Math.pow(2, zoom)
-  );
+// ================= TILE =================
+function Tile({ url, position, size }) {
+  const texture = useLoader(THREE.TextureLoader, url);
 
-  return `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
+  return (
+    <mesh position={position} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[size, size]} />
+      <meshStandardMaterial map={texture} />
+    </mesh>
+  );
 }
 
-// ================= GROUND =================
-function Ground({ planeRef, mapUrl }) {
-  const texture = useLoader(THREE.TextureLoader, mapUrl);
+// ================= GROUND GRID =================
+function Ground({ planeRef, center }) {
+  const zoom = 12;
+  const tileSize = 120;
 
-  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(20, 20);
+  const [tiles, setTiles] = useState([]);
 
-  const groundRef = useRef();
+  const latLonToTile = (lat, lon) => {
+    const x = Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
+    const y = Math.floor(
+      ((1 -
+        Math.log(
+          Math.tan((lat * Math.PI) / 180) +
+            1 / Math.cos((lat * Math.PI) / 180)
+        ) /
+          Math.PI) /
+        2) *
+        Math.pow(2, zoom)
+    );
+    return { x, y };
+  };
+
+  useEffect(() => {
+    if (!center) return;
+
+    const { x, y } = latLonToTile(center.lat, center.lon);
+
+    const grid = [];
+
+    for (let i = -2; i <= 2; i++) {
+      for (let j = -2; j <= 2; j++) {
+        grid.push({
+          url: `https://tile.openstreetmap.org/${zoom}/${x + i}/${y + j}.png`,
+          baseX: i * tileSize,
+          baseZ: j * tileSize,
+        });
+      }
+    }
+
+    setTiles(grid);
+  }, [center]);
 
   useFrame(() => {
-    if (planeRef?.current && groundRef.current) {
-      groundRef.current.position.x = planeRef.current.position.x;
-      groundRef.current.position.z = planeRef.current.position.z;
-    }
+    if (!planeRef.current) return;
+
+    const px = planeRef.current.position.x;
+    const pz = planeRef.current.position.z;
+
+    setTiles((prev) =>
+      prev.map((tile) => ({
+        ...tile,
+        pos: [
+          tile.baseX + px * 0.02,
+          0,
+          tile.baseZ + pz * 0.02,
+        ],
+      }))
+    );
   });
 
   return (
-    <mesh ref={groundRef} rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[4000, 4000]} />
-      <meshStandardMaterial map={texture} />
-    </mesh>
+    <>
+      {tiles.map((tile, i) => (
+        <Tile
+          key={i}
+          url={tile.url}
+          position={tile.pos || [0, 0, 0]}
+          size={tileSize}
+        />
+      ))}
+    </>
   );
 }
 
@@ -187,29 +232,25 @@ export default function FlightSimulation() {
   const planeRef = useRef();
 
   const [city, setCity] = useState("");
-  const [mapUrl, setMapUrl] = useState(
-    "https://tile.openstreetmap.org/6/33/22.png"
-  );
+  const [center, setCenter] = useState({
+    lat: 5.6037, // Accra default
+    lon: -0.1870,
+  });
 
   const handleSearch = async (e) => {
     e.preventDefault();
-
-    if (!city) return;
 
     const res = await fetch(
       `https://nominatim.openstreetmap.org/search?format=json&q=${city}`
     );
     const data = await res.json();
 
-    if (data.length === 0) {
-      alert("City not found");
-      return;
-    }
+    if (data.length === 0) return alert("City not found");
 
-    const lat = parseFloat(data[0].lat);
-    const lon = parseFloat(data[0].lon);
-
-    setMapUrl(getTileUrl(lat, lon, 10));
+    setCenter({
+      lat: parseFloat(data[0].lat),
+      lon: parseFloat(data[0].lon),
+    });
   };
 
   return (
@@ -249,7 +290,7 @@ export default function FlightSimulation() {
         <Sky sunPosition={[100, 20, 100]} />
 
         <group name="world">
-          <Ground planeRef={planeRef} mapUrl={mapUrl} />
+          <Ground planeRef={planeRef} center={center} />
           <Clouds />
         </group>
 
