@@ -7,6 +7,8 @@ import * as THREE from "three";
 function Tile({ url, position, size }) {
   const texture = useLoader(THREE.TextureLoader, url);
 
+  texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
+
   return (
     <mesh position={position} rotation={[-Math.PI / 2, 0, 0]}>
       <planeGeometry args={[size, size]} />
@@ -15,28 +17,38 @@ function Tile({ url, position, size }) {
   );
 }
 
-// ================= GROUND =================
-function Ground({ center, resetKey }) {
-  const zoom = 12;
-  const tileSize = 120;
+// ================= GROUND (INFINITE SYSTEM) =================
+function Ground({ planeRef, center }) {
+  const zoom = 13;
+  const tileSize = 150;
 
-  const [tiles, setTiles] = useState([]);
+  const tilesRef = useRef([]);
 
   const latLonToTile = (lat, lon) => {
-    const x = Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
-    const y = Math.floor(
+    const x = ((lon + 180) / 360) * Math.pow(2, zoom);
+    const y =
       ((1 -
         Math.log(
           Math.tan((lat * Math.PI) / 180) +
           1 / Math.cos((lat * Math.PI) / 180)
         ) /
-        Math.PI) /
+          Math.PI) /
         2) *
-      Math.pow(2, zoom)
-    );
+      Math.pow(2, zoom);
     return { x, y };
   };
 
+  const tileToLatLon = (x, y) => {
+    const n = Math.PI - (2 * Math.PI * y) / Math.pow(2, zoom);
+    return {
+      lat: (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))),
+      lon: (x / Math.pow(2, zoom)) * 360 - 180,
+    };
+  };
+
+  const [tiles, setTiles] = useState([]);
+
+  // 🔥 INITIAL GRID
   useEffect(() => {
     if (!center) return;
 
@@ -44,36 +56,71 @@ function Ground({ center, resetKey }) {
 
     const grid = [];
 
-    for (let i = -2; i <= 2; i++) {
-      for (let j = -2; j <= 2; j++) {
+    for (let i = -3; i <= 3; i++) {
+      for (let j = -3; j <= 3; j++) {
+        const tx = Math.floor(x + i);
+        const ty = Math.floor(y + j);
+
         grid.push({
-          url: `https://tile.openstreetmap.org/${zoom}/${x + i}/${y + j}.png`,
+          tx,
+          ty,
           position: [i * tileSize, 0, j * tileSize],
         });
       }
     }
 
+    tilesRef.current = grid;
     setTiles(grid);
-  }, [center, resetKey]);
+  }, [center]);
+
+  // 🔥 FOLLOW PLANE (INFINITE EFFECT)
+  useFrame(() => {
+    if (!planeRef.current) return;
+
+    const px = planeRef.current.position.x;
+    const pz = planeRef.current.position.z;
+
+    setTiles((prev) =>
+      prev.map((tile) => {
+        let [x, y, z] = tile.position;
+
+        // wrap tiles (infinite illusion)
+        if (x + px > tileSize * 3) x -= tileSize * 7;
+        if (x + px < -tileSize * 3) x += tileSize * 7;
+
+        if (z + pz > tileSize * 3) z -= tileSize * 7;
+        if (z + pz < -tileSize * 3) z += tileSize * 7;
+
+        return {
+          ...tile,
+          position: [x, 0, z],
+        };
+      })
+    );
+  });
 
   return (
     <>
       {tiles.map((tile, i) => (
-        <Tile key={i} {...tile} size={tileSize} />
+        <Tile
+          key={i}
+          url={`https://tile.openstreetmap.org/${zoom}/${tile.tx}/${tile.ty}.png`}
+          position={tile.position}
+          size={tileSize}
+        />
       ))}
     </>
   );
 }
 
 // ================= PLANE =================
-const Plane = React.forwardRef(({ speed, setStats, autopilot }, planeRef) => {
+const Plane = React.forwardRef(({ speed, setStats }, planeRef) => {
   const { camera } = useThree();
   const { scene: model } = useGLTF("/models/product.glb");
 
   const velocity = useRef(new THREE.Vector3(0, 0, -speed));
   const rotation = useRef({ pitch: 0, yaw: 0, roll: 0 });
   const keys = useRef({});
-  const [cockpit, setCockpit] = useState(false);
 
   useEffect(() => {
     if (!model) return;
@@ -84,16 +131,11 @@ const Plane = React.forwardRef(({ speed, setStats, autopilot }, planeRef) => {
 
     const scale = 2 / Math.max(size.x, size.y, size.z);
     model.scale.set(scale, scale, scale);
-
     model.rotation.y = Math.PI;
   }, [model]);
 
   useEffect(() => {
-    const down = (e) => {
-      keys.current[e.key.toLowerCase()] = true;
-      if (e.key.toLowerCase() === "c") setCockpit((v) => !v);
-    };
-
+    const down = (e) => (keys.current[e.key.toLowerCase()] = true);
     const up = (e) => (keys.current[e.key.toLowerCase()] = false);
 
     window.addEventListener("keydown", down);
@@ -109,22 +151,10 @@ const Plane = React.forwardRef(({ speed, setStats, autopilot }, planeRef) => {
     const p = planeRef.current;
     if (!p) return;
 
-    // 🔥 AUTOPILOT
-    if (autopilot) {
-      rotation.current.yaw += 0.002; // smooth turn
-    } else {
-      if (keys.current["w"]) rotation.current.pitch += 0.008;
-      if (keys.current["s"]) rotation.current.pitch -= 0.008;
-      if (keys.current["a"]) rotation.current.yaw += 0.01;
-      if (keys.current["d"]) rotation.current.yaw -= 0.01;
-    }
-
-    rotation.current.roll =
-      keys.current["a"]
-        ? 0.4
-        : keys.current["d"]
-        ? -0.4
-        : rotation.current.roll * 0.92;
+    if (keys.current["a"]) rotation.current.yaw += 0.01;
+    if (keys.current["d"]) rotation.current.yaw -= 0.01;
+    if (keys.current["w"]) rotation.current.pitch += 0.008;
+    if (keys.current["s"]) rotation.current.pitch -= 0.008;
 
     p.rotation.set(
       rotation.current.pitch,
@@ -134,29 +164,18 @@ const Plane = React.forwardRef(({ speed, setStats, autopilot }, planeRef) => {
 
     const forward = new THREE.Vector3(0, 0, -1).applyEuler(p.rotation);
 
-    let currentSpeed = speed;
-    if (keys.current["shift"]) currentSpeed *= 2.5;
-
-    forward.multiplyScalar(currentSpeed);
+    forward.multiplyScalar(speed);
     velocity.current.lerp(forward, 0.05);
 
-    velocity.current.y += rotation.current.pitch * 0.02;
-    velocity.current.y -= 0.0015;
-
     p.position.add(velocity.current);
-    if (p.position.y < 2) p.position.y = 2;
 
-    const camOffset = cockpit
-      ? new THREE.Vector3(0, 1.5, 3)
-      : new THREE.Vector3(0, 2, 6);
-
-    camOffset.applyEuler(p.rotation);
+    const camOffset = new THREE.Vector3(0, 2, 6).applyEuler(p.rotation);
 
     camera.position.lerp(p.position.clone().add(camOffset), 0.1);
     camera.lookAt(p.position);
 
     setStats({
-      speed: currentSpeed.toFixed(2),
+      speed: speed.toFixed(2),
       altitude: p.position.y.toFixed(1),
     });
   });
@@ -168,34 +187,12 @@ const Plane = React.forwardRef(({ speed, setStats, autopilot }, planeRef) => {
   );
 });
 
-// ================= CLOUDS =================
-function Clouds() {
-  return (
-    <>
-      {[...Array(20)].map((_, i) => (
-        <mesh key={i} position={[
-          Math.random() * 200 - 100,
-          Math.random() * 40 + 10,
-          Math.random() * 200 - 100,
-        ]}>
-          <sphereGeometry args={[4, 16, 16]} />
-          <meshStandardMaterial transparent opacity={0.6} />
-        </mesh>
-      ))}
-    </>
-  );
-}
-
 // ================= MAIN =================
 export default function FlightSimulation() {
   const [stats, setStats] = useState({ speed: 0, altitude: 0 });
   const planeRef = useRef();
 
   const [city, setCity] = useState("");
-  const [locationName, setLocationName] = useState("Accra");
-  const [resetKey, setResetKey] = useState(0);
-  const [autopilot, setAutopilot] = useState(false);
-
   const [center, setCenter] = useState({
     lat: 5.6037,
     lon: -0.1870,
@@ -211,28 +208,23 @@ export default function FlightSimulation() {
     );
     const data = await res.json();
 
-    if (data.length === 0) return alert("City not found");
+    if (!data.length) return alert("City not found");
 
     setCenter({
       lat: parseFloat(data[0].lat),
       lon: parseFloat(data[0].lon),
     });
 
-    setLocationName(city);
-
-    // 🔥 RESET PLANE
+    // reset plane
     if (planeRef.current) {
       planeRef.current.position.set(0, 2.5, 0);
     }
-
-    // 🔥 FORCE MAP RESET
-    setResetKey((k) => k + 1);
   };
 
   return (
     <div style={{ width: "100vw", height: "100vh" }}>
 
-      {/* UI */}
+      {/* SEARCH UI */}
       <div style={{
         position: "absolute",
         top: 20,
@@ -247,18 +239,13 @@ export default function FlightSimulation() {
           <input
             value={city}
             onChange={(e) => setCity(e.target.value)}
-            placeholder="Enter city"
-            style={{ padding: 8, borderRadius: 5 }}
+            placeholder="Search city (e.g Accra, Kumasi)"
+            style={{ padding: 8 }}
           />
         </form>
 
-        <p>📍 Location: {locationName}</p>
         <p>Speed: {stats.speed}</p>
         <p>Altitude: {stats.altitude}</p>
-
-        <button onClick={() => setAutopilot(!autopilot)}>
-          {autopilot ? "Disable Autopilot" : "Enable Autopilot"}
-        </button>
       </div>
 
       <Canvas camera={{ position: [0, 2, 6] }}>
@@ -268,16 +255,10 @@ export default function FlightSimulation() {
 
         <Sky sunPosition={[100, 20, 100]} />
 
-        <Ground center={center} resetKey={resetKey} />
-        <Clouds />
+        <Ground planeRef={planeRef} center={center} />
 
         <Suspense fallback={null}>
-          <Plane
-            speed={0.12}
-            setStats={setStats}
-            ref={planeRef}
-            autopilot={autopilot}
-          />
+          <Plane speed={0.12} setStats={setStats} ref={planeRef} />
         </Suspense>
       </Canvas>
     </div>
