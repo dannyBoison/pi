@@ -7,8 +7,6 @@ import * as THREE from "three";
 function Tile({ url, position, size }) {
   const texture = useTexture(url);
 
-  texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
-
   return (
     <mesh position={position} rotation={[-Math.PI / 2, 0, 0]}>
       <planeGeometry args={[size, size]} />
@@ -22,41 +20,34 @@ function Ground({ planeRef, center }) {
   const zoom = 14;
   const tileSize = 120;
 
+  const groupRef = useRef();
   const [tiles, setTiles] = useState([]);
 
   const latLonToTile = (lat, lon) => {
-    const x = ((lon + 180) / 360) * Math.pow(2, zoom);
-    const y =
+    const x = Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
+    const y = Math.floor(
       ((1 -
         Math.log(
           Math.tan((lat * Math.PI) / 180) +
           1 / Math.cos((lat * Math.PI) / 180)
         ) /
-          Math.PI) /
-      2 *
-      Math.pow(2, zoom);
+        Math.PI) /
+        2) *
+        Math.pow(2, zoom)
+    );
     return { x, y };
   };
 
-  const baseTile = useRef({ x: 0, y: 0 });
-
-  // 🔥 LOAD CITY MAP
+  // 🔥 Load tiles when city changes
   useEffect(() => {
     const { x, y } = latLonToTile(center.lat, center.lon);
 
-    baseTile.current = {
-      x: Math.floor(x),
-      y: Math.floor(y),
-    };
-
     const grid = [];
-
-    for (let i = -2; i <= 2; i++) {
-      for (let j = -2; j <= 2; j++) {
+    for (let i = -3; i <= 3; i++) {
+      for (let j = -3; j <= 3; j++) {
         grid.push({
-          x: baseTile.current.x + i,
-          y: baseTile.current.y + j,
-          offset: [i * tileSize, 0, j * tileSize],
+          url: `https://tile.openstreetmap.org/${zoom}/${x + i}/${y + j}.png`,
+          position: [i * tileSize, 0, j * tileSize],
         });
       }
     }
@@ -64,59 +55,37 @@ function Ground({ planeRef, center }) {
     setTiles(grid);
   }, [center]);
 
-  // 🔥 MOVE WITH PLANE (SMOOTH)
+  // 🔥 Move ground instead of recreating tiles
   useFrame(() => {
-    if (!planeRef.current) return;
+    if (!planeRef.current || !groupRef.current) return;
 
-    const px = planeRef.current.position.x * 0.02;
-    const pz = planeRef.current.position.z * 0.02;
-
-    setTiles((prev) =>
-      prev.map((tile) => ({
-        ...tile,
-        position: [
-          tile.offset[0] - px,
-          0,
-          tile.offset[2] - pz,
-        ],
-      }))
-    );
+    groupRef.current.position.x = -planeRef.current.position.x * 0.5;
+    groupRef.current.position.z = -planeRef.current.position.z * 0.5;
   });
 
   return (
-    <>
+    <group ref={groupRef}>
       {tiles.map((tile, i) => (
-        <Tile
-          key={i}
-          url={`https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`}
-          position={tile.position || tile.offset}
-          size={tileSize}
-        />
+        <Tile key={i} {...tile} size={tileSize} />
       ))}
-    </>
+    </group>
   );
 }
 
 // ================= PLANE =================
 const Plane = React.forwardRef(({ speed, setStats }, planeRef) => {
   const { camera } = useThree();
-  const { scene: model } = useGLTF("/models/product.glb");
+
+  let model;
+  try {
+    model = useGLTF("/models/product.glb").scene;
+  } catch {
+    model = null;
+  }
 
   const velocity = useRef(new THREE.Vector3(0, 0, -speed));
   const rotation = useRef({ pitch: 0, yaw: 0, roll: 0 });
   const keys = useRef({});
-
-  useEffect(() => {
-    if (!model) return;
-
-    const box = new THREE.Box3().setFromObject(model);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-
-    const scale = 2 / Math.max(size.x, size.y, size.z);
-    model.scale.set(scale, scale, scale);
-    model.rotation.y = Math.PI;
-  }, [model]);
 
   useEffect(() => {
     const down = (e) => (keys.current[e.key.toLowerCase()] = true);
@@ -165,7 +134,15 @@ const Plane = React.forwardRef(({ speed, setStats }, planeRef) => {
 
   return (
     <group ref={planeRef} position={[0, 2.5, 0]}>
-      <primitive object={model} />
+      {model ? (
+        <primitive object={model} scale={2} />
+      ) : (
+        // 🔥 fallback plane if model fails
+        <mesh>
+          <coneGeometry args={[0.5, 2, 8]} />
+          <meshStandardMaterial color="red" />
+        </mesh>
+      )}
     </group>
   );
 });
@@ -184,33 +161,40 @@ export default function FlightSimulation() {
   const handleSearch = async (e) => {
     e.preventDefault();
 
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${city}`
-    );
-    const data = await res.json();
+    if (!city) return;
 
-    if (!data.length) return alert("City not found");
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${city}`
+      );
+      const data = await res.json();
 
-    setCenter({
-      lat: parseFloat(data[0].lat),
-      lon: parseFloat(data[0].lon),
-    });
+      if (!data.length) return alert("City not found");
 
-    // reset plane
-    if (planeRef.current) {
-      planeRef.current.position.set(0, 2.5, 0);
+      setCenter({
+        lat: parseFloat(data[0].lat),
+        lon: parseFloat(data[0].lon),
+      });
+
+      // reset plane
+      if (planeRef.current) {
+        planeRef.current.position.set(0, 2.5, 0);
+      }
+
+    } catch {
+      alert("Search failed");
     }
   };
 
   return (
-    <div style={{ width: "100vw", height: "100vh" }}>
+    <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
 
-      {/* SEARCH */}
+      {/* 🔥 UI OVER CANVAS */}
       <div style={{
         position: "absolute",
         top: 20,
         left: 20,
-        zIndex: 10,
+        zIndex: 100,
         background: "#000000cc",
         padding: 15,
         borderRadius: 10,
@@ -221,8 +205,9 @@ export default function FlightSimulation() {
             value={city}
             onChange={(e) => setCity(e.target.value)}
             placeholder="Search city (Accra, Kumasi, London)"
-            style={{ padding: 8 }}
+            style={{ padding: 8, marginRight: 5 }}
           />
+          <button type="submit">Search</button>
         </form>
 
         <p>Speed: {stats.speed}</p>
