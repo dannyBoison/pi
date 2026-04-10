@@ -8,19 +8,30 @@ const bullets = [];
 const missiles = [];
 const explosions = [];
 
-// ================= GROUND MAP =================
-function Ground({ planeRef }) {
-  const texture = useLoader(
-    THREE.TextureLoader,
-    "https://threejs.org/examples/textures/land_ocean_ice_cloud_2048.jpg"
+// ================= TILE HELPER =================
+function getTileUrl(lat, lon, zoom = 10) {
+  const x = Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
+  const y = Math.floor(
+    ((1 -
+      Math.log(
+        Math.tan((lat * Math.PI) / 180) +
+        1 / Math.cos((lat * Math.PI) / 180)
+      ) /
+      Math.PI) / 2) * Math.pow(2, zoom)
   );
 
+  return `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
+}
+
+// ================= GROUND =================
+function Ground({ planeRef, mapUrl }) {
+  const texture = useLoader(THREE.TextureLoader, mapUrl);
+
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(40, 40);
+  texture.repeat.set(20, 20);
 
   const groundRef = useRef();
 
-  // 🔥 Infinite ground (follows plane)
   useFrame(() => {
     if (planeRef?.current && groundRef.current) {
       groundRef.current.position.x = planeRef.current.position.x;
@@ -46,7 +57,6 @@ const Plane = forwardRef(({ speed, setStats }, planeRef) => {
   const keys = useRef({});
   const [cockpit, setCockpit] = useState(false);
 
-  // FIX MODEL SCALE
   useEffect(() => {
     if (model) {
       const box = new THREE.Box3().setFromObject(model);
@@ -69,12 +79,9 @@ const Plane = forwardRef(({ speed, setStats }, planeRef) => {
     }
   }, [model]);
 
-  // INPUTS
   useEffect(() => {
     const down = (e) => {
       keys.current[e.key.toLowerCase()] = true;
-      if (e.code === "Space") shoot();
-      if (e.key.toLowerCase() === "m") shootMissile();
       if (e.key.toLowerCase() === "c") setCockpit((v) => !v);
     };
 
@@ -88,27 +95,10 @@ const Plane = forwardRef(({ speed, setStats }, planeRef) => {
     };
   }, []);
 
-  const shoot = () => {
-    if (!planeRef.current) return;
-    bullets.push({
-      position: planeRef.current.position.clone(),
-      direction: new THREE.Vector3(0, 0, -1).applyEuler(planeRef.current.rotation),
-    });
-  };
-
-  const shootMissile = () => {
-    if (!planeRef.current) return;
-    missiles.push({
-      position: planeRef.current.position.clone(),
-      direction: new THREE.Vector3(0, 0, -1).applyEuler(planeRef.current.rotation),
-    });
-  };
-
   useFrame(() => {
     const p = planeRef.current;
     if (!p) return;
 
-    // CONTROLS
     if (keys.current["w"]) rotation.current.pitch += 0.008;
     if (keys.current["s"]) rotation.current.pitch -= 0.008;
     if (keys.current["a"]) rotation.current.yaw += 0.01;
@@ -141,7 +131,6 @@ const Plane = forwardRef(({ speed, setStats }, planeRef) => {
     p.position.add(velocity.current);
     if (p.position.y < 2) p.position.y = 2;
 
-    // CAMERA
     const camOffset = cockpit
       ? new THREE.Vector3(0, 1.5, 3)
       : new THREE.Vector3(0, 2, 6);
@@ -195,22 +184,72 @@ function Clouds() {
 // ================= MAIN =================
 export default function FlightSimulation() {
   const [stats, setStats] = useState({ speed: 0, altitude: 0 });
-  const planeRef = useRef(); // ✅ IMPORTANT
+  const planeRef = useRef();
+
+  const [city, setCity] = useState("");
+  const [mapUrl, setMapUrl] = useState(
+    "https://tile.openstreetmap.org/6/33/22.png"
+  );
+
+  const handleSearch = async (e) => {
+    e.preventDefault();
+
+    if (!city) return;
+
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${city}`
+    );
+    const data = await res.json();
+
+    if (data.length === 0) {
+      alert("City not found");
+      return;
+    }
+
+    const lat = parseFloat(data[0].lat);
+    const lon = parseFloat(data[0].lon);
+
+    setMapUrl(getTileUrl(lat, lon, 10));
+  };
 
   return (
     <div style={{ width: "100vw", height: "100vh" }}>
+
+      {/* 🔍 SEARCH UI */}
+      <div style={{
+        position: "absolute",
+        top: 20,
+        left: 20,
+        zIndex: 10,
+        background: "#000000aa",
+        padding: 15,
+        borderRadius: 8,
+        color: "white"
+      }}>
+        <form onSubmit={handleSearch}>
+          <input
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            placeholder="Enter city (e.g Kumasi)"
+            style={{ padding: 8, borderRadius: 5 }}
+          />
+        </form>
+
+        <p>Speed: {stats.speed}</p>
+        <p>Altitude: {stats.altitude}</p>
+      </div>
+
       <Canvas shadows camera={{ position: [0, 2, 6] }}>
         <color attach="background" args={["#87CEEB"]} />
         <fog attach="fog" args={["#87CEEB", 10, 300]} />
 
-        {/* ✅ BETTER LIGHTING */}
         <ambientLight intensity={0.6} />
         <directionalLight position={[100, 100, 50]} intensity={2} />
 
         <Sky sunPosition={[100, 20, 100]} />
 
         <group name="world">
-          <Ground planeRef={planeRef} />
+          <Ground planeRef={planeRef} mapUrl={mapUrl} />
           <Clouds />
         </group>
 
