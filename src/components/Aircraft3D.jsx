@@ -3,114 +3,45 @@ import { Canvas, useFrame, useThree, useLoader } from "@react-three/fiber";
 import { Sky, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 
-// ================= TILE =================
-function Tile({ url, position, size }) {
-  const texture = useLoader(THREE.TextureLoader, url);
+// ================= GROUND =================
+function Ground({ planeRef, mapUrl }) {
+  const texture = useLoader(THREE.TextureLoader, mapUrl);
 
-  texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(20, 20);
+
+  const groundRef = useRef();
+
+  useFrame(() => {
+    if (!planeRef.current) return;
+
+    // follow plane (infinite illusion)
+    groundRef.current.position.x = planeRef.current.position.x;
+    groundRef.current.position.z = planeRef.current.position.z;
+  });
 
   return (
-    <mesh position={position} rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[size, size]} />
+    <mesh ref={groundRef} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[5000, 5000]} />
       <meshStandardMaterial map={texture} />
     </mesh>
   );
 }
 
-// ================= GROUND (INFINITE SYSTEM) =================
-function Ground({ planeRef, center }) {
-  const zoom = 13;
-  const tileSize = 150;
-
-  const tilesRef = useRef([]);
-
-  const latLonToTile = (lat, lon) => {
-    const x = ((lon + 180) / 360) * Math.pow(2, zoom);
-    const y =
-      ((1 -
-        Math.log(
-          Math.tan((lat * Math.PI) / 180) +
-          1 / Math.cos((lat * Math.PI) / 180)
-        ) /
-          Math.PI) /
-        2) *
-      Math.pow(2, zoom);
-    return { x, y };
-  };
-
-  const tileToLatLon = (x, y) => {
-    const n = Math.PI - (2 * Math.PI * y) / Math.pow(2, zoom);
-    return {
-      lat: (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))),
-      lon: (x / Math.pow(2, zoom)) * 360 - 180,
-    };
-  };
-
-  const [tiles, setTiles] = useState([]);
-
-  // 🔥 INITIAL GRID
-  useEffect(() => {
-    if (!center) return;
-
-    const { x, y } = latLonToTile(center.lat, center.lon);
-
-    const grid = [];
-
-    for (let i = -3; i <= 3; i++) {
-      for (let j = -3; j <= 3; j++) {
-        const tx = Math.floor(x + i);
-        const ty = Math.floor(y + j);
-
-        grid.push({
-          tx,
-          ty,
-          position: [i * tileSize, 0, j * tileSize],
-        });
-      }
-    }
-
-    tilesRef.current = grid;
-    setTiles(grid);
-  }, [center]);
-
-  // 🔥 FOLLOW PLANE (INFINITE EFFECT)
-  useFrame(() => {
-    if (!planeRef.current) return;
-
-    const px = planeRef.current.position.x;
-    const pz = planeRef.current.position.z;
-
-    setTiles((prev) =>
-      prev.map((tile) => {
-        let [x, y, z] = tile.position;
-
-        // wrap tiles (infinite illusion)
-        if (x + px > tileSize * 3) x -= tileSize * 7;
-        if (x + px < -tileSize * 3) x += tileSize * 7;
-
-        if (z + pz > tileSize * 3) z -= tileSize * 7;
-        if (z + pz < -tileSize * 3) z += tileSize * 7;
-
-        return {
-          ...tile,
-          position: [x, 0, z],
-        };
-      })
-    );
-  });
-
-  return (
-    <>
-      {tiles.map((tile, i) => (
-        <Tile
-          key={i}
-          url={`https://tile.openstreetmap.org/${zoom}/${tile.tx}/${tile.ty}.png`}
-          position={tile.position}
-          size={tileSize}
-        />
-      ))}
-    </>
+// ================= GET TILE =================
+function getTileUrl(lat, lon, zoom = 12) {
+  const x = Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
+  const y = Math.floor(
+    ((1 -
+      Math.log(
+        Math.tan((lat * Math.PI) / 180) +
+        1 / Math.cos((lat * Math.PI) / 180)
+      ) /
+      Math.PI) / 2) *
+      Math.pow(2, zoom)
   );
+
+  return `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
 }
 
 // ================= PLANE =================
@@ -163,10 +94,9 @@ const Plane = React.forwardRef(({ speed, setStats }, planeRef) => {
     );
 
     const forward = new THREE.Vector3(0, 0, -1).applyEuler(p.rotation);
-
     forward.multiplyScalar(speed);
-    velocity.current.lerp(forward, 0.05);
 
+    velocity.current.lerp(forward, 0.05);
     p.position.add(velocity.current);
 
     const camOffset = new THREE.Vector3(0, 2, 6).applyEuler(p.rotation);
@@ -193,10 +123,9 @@ export default function FlightSimulation() {
   const planeRef = useRef();
 
   const [city, setCity] = useState("");
-  const [center, setCenter] = useState({
-    lat: 5.6037,
-    lon: -0.1870,
-  });
+  const [mapUrl, setMapUrl] = useState(
+    "https://tile.openstreetmap.org/12/2048/1362.png" // default Accra
+  );
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -210,12 +139,11 @@ export default function FlightSimulation() {
 
     if (!data.length) return alert("City not found");
 
-    setCenter({
-      lat: parseFloat(data[0].lat),
-      lon: parseFloat(data[0].lon),
-    });
+    const lat = parseFloat(data[0].lat);
+    const lon = parseFloat(data[0].lon);
 
-    // reset plane
+    setMapUrl(getTileUrl(lat, lon));
+
     if (planeRef.current) {
       planeRef.current.position.set(0, 2.5, 0);
     }
@@ -255,7 +183,7 @@ export default function FlightSimulation() {
 
         <Sky sunPosition={[100, 20, 100]} />
 
-        <Ground planeRef={planeRef} center={center} />
+        <Ground planeRef={planeRef} mapUrl={mapUrl} />
 
         <Suspense fallback={null}>
           <Plane speed={0.12} setStats={setStats} ref={planeRef} />
