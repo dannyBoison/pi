@@ -38,13 +38,12 @@ function Ground({ planeRef, center }) {
     return { x, y };
   };
 
-  // 🔥 Load tiles when city changes
   useEffect(() => {
     const { x, y } = latLonToTile(center.lat, center.lon);
 
     const grid = [];
-    for (let i = -3; i <= 3; i++) {
-      for (let j = -3; j <= 3; j++) {
+    for (let i = -4; i <= 4; i++) {
+      for (let j = -4; j <= 4; j++) {
         grid.push({
           url: `https://tile.openstreetmap.org/${zoom}/${x + i}/${y + j}.png`,
           position: [i * tileSize, 0, j * tileSize],
@@ -55,7 +54,7 @@ function Ground({ planeRef, center }) {
     setTiles(grid);
   }, [center]);
 
-  // 🔥 Move ground instead of recreating tiles
+  // 🔥 Move world instead of tiles (smooth + infinite feel)
   useFrame(() => {
     if (!planeRef.current || !groupRef.current) return;
 
@@ -88,6 +87,18 @@ const Plane = React.forwardRef(({ speed, setStats }, planeRef) => {
   const keys = useRef({});
 
   useEffect(() => {
+    if (model) {
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+
+      const scale = 2 / Math.max(size.x, size.y, size.z);
+      model.scale.set(scale, scale, scale);
+      model.rotation.y = Math.PI;
+    }
+  }, [model]);
+
+  useEffect(() => {
     const down = (e) => (keys.current[e.key.toLowerCase()] = true);
     const up = (e) => (keys.current[e.key.toLowerCase()] = false);
 
@@ -104,6 +115,7 @@ const Plane = React.forwardRef(({ speed, setStats }, planeRef) => {
     const p = planeRef.current;
     if (!p) return;
 
+    // movement
     if (keys.current["a"]) rotation.current.yaw += 0.01;
     if (keys.current["d"]) rotation.current.yaw -= 0.01;
     if (keys.current["w"]) rotation.current.pitch += 0.008;
@@ -121,10 +133,16 @@ const Plane = React.forwardRef(({ speed, setStats }, planeRef) => {
     velocity.current.lerp(forward, 0.05);
     p.position.add(velocity.current);
 
-    const camOffset = new THREE.Vector3(0, 2, 6).applyEuler(p.rotation);
+    // 🔥 CAMERA FIX (OUTSIDE PLANE)
+    const camOffset = new THREE.Vector3(0, 4, 10); // BACK + UP
+    camOffset.applyEuler(p.rotation);
 
-    camera.position.lerp(p.position.clone().add(camOffset), 0.1);
-    camera.lookAt(p.position);
+    camera.position.lerp(
+      p.position.clone().add(camOffset),
+      0.08
+    );
+
+    camera.lookAt(p.position.clone().add(new THREE.Vector3(0, 1, 0)));
 
     setStats({
       speed: speed.toFixed(2),
@@ -133,11 +151,10 @@ const Plane = React.forwardRef(({ speed, setStats }, planeRef) => {
   });
 
   return (
-    <group ref={planeRef} position={[0, 2.5, 0]}>
+    <group ref={planeRef} position={[0, 3, 0]}>
       {model ? (
-        <primitive object={model} scale={2} />
+        <primitive object={model} />
       ) : (
-        // 🔥 fallback plane if model fails
         <mesh>
           <coneGeometry args={[0.5, 2, 8]} />
           <meshStandardMaterial color="red" />
@@ -178,7 +195,7 @@ export default function FlightSimulation() {
 
       // reset plane
       if (planeRef.current) {
-        planeRef.current.position.set(0, 2.5, 0);
+        planeRef.current.position.set(0, 3, 0);
       }
 
     } catch {
@@ -189,7 +206,7 @@ export default function FlightSimulation() {
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
 
-      {/* 🔥 UI OVER CANVAS */}
+      {/* UI */}
       <div style={{
         position: "absolute",
         top: 20,
@@ -214,7 +231,7 @@ export default function FlightSimulation() {
         <p>Altitude: {stats.altitude}</p>
       </div>
 
-      <Canvas camera={{ position: [0, 2, 6] }}>
+      <Canvas camera={{ position: [0, 4, 10], fov: 60 }}>
         <color attach="background" args={["#87CEEB"]} />
         <ambientLight intensity={0.6} />
         <directionalLight position={[100, 100, 50]} intensity={2} />
