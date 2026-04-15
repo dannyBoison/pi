@@ -39,9 +39,55 @@ function Tile({ url, position, size }) {
 // ================= MINI MAP (NEW GTA STYLE) =================
 
 function MiniMap({ planeRef, heading }) {
-  const mapRef = useRef();
-
   const size = 170;
+
+  const zoom = 14;
+  const tileSize = 120;
+  const scale = 0.04; // shrink world into radar
+
+  const [center, setCenter] = useState({ x: 0, z: 0 });
+
+  useFrame(() => {
+    if (!planeRef.current) return;
+
+    setCenter({
+      x: planeRef.current.position.x,
+      z: planeRef.current.position.z,
+    });
+  });
+
+  const baseX = Math.floor(center.x / tileSize);
+  const baseZ = Math.floor(center.z / tileSize);
+
+  const tiles = [];
+
+  // small radar grid (THIS is real map logic now)
+  for (let x = -2; x <= 2; x++) {
+    for (let z = -2; z <= 2; z++) {
+      const tx = baseX + x;
+      const tz = baseZ + z;
+
+      const url = `https://tile.openstreetmap.org/${zoom}/${tx}/${tz}.png`;
+
+      tiles.push(
+        <img
+          key={`${tx}-${tz}`}
+          src={url}
+          alt=""
+          style={{
+            position: "absolute",
+            width: tileSize * scale,
+            height: tileSize * scale,
+            left: "50%",
+            top: "50%",
+            transform: `translate(${x * 25}px, ${z * 25}px)`,
+            opacity: 0.8,
+            filter: "brightness(0.6) contrast(1.2) saturate(0.8)",
+          }}
+        />
+      );
+    }
+  }
 
   return (
     <div
@@ -54,72 +100,41 @@ function MiniMap({ planeRef, heading }) {
         borderRadius: "50%",
         overflow: "hidden",
         border: "2px solid rgba(0,255,120,0.4)",
-        boxShadow: "0 0 20px rgba(0,255,120,0.2)",
+        boxShadow: "0 0 25px rgba(0,255,120,0.25)",
         zIndex: 200,
+        background: "#000",
       }}
     >
-      {/* MINI WORLD VIEW (REAL MAP FEED) */}
+      {/* ROTATION (WORLD ORIENTATION) */}
       <div
         style={{
+          position: "absolute",
           width: "100%",
           height: "100%",
-          transform: `rotate(${-heading}rad) scale(0.25)`,
+          transform: `rotate(${-heading}rad)`,
           transformOrigin: "center",
         }}
       >
-        {/* This is your actual 3D world reused visually */}
-        <div
-          ref={mapRef}
-          style={{
-            width: "400%",
-            height: "400%",
-            position: "absolute",
-            left: "-150%",
-            top: "-150%",
-          }}
-        >
-          {/* Fake radar ground base */}
-          <div
-            style={{
-              width: "100%",
-              height: "100%",
-              background:
-                "linear-gradient(180deg, #0a0f0a, #050805)",
-              position: "absolute",
-            }}
-          />
-
-          {/* grid overlay like GTA terrain scan */}
-          <div
-            style={{
-              width: "100%",
-              height: "100%",
-              backgroundImage:
-                "radial-gradient(rgba(0,255,120,0.15) 1px, transparent 1px)",
-              backgroundSize: "18px 18px",
-              opacity: 0.4,
-              position: "absolute",
-            }}
-          />
-        </div>
+        {tiles}
       </div>
 
-      {/* PLAYER ICON */}
+      {/* PLAYER DOT */}
       <div
         style={{
           position: "absolute",
           left: "50%",
           top: "50%",
-          width: 12,
-          height: 12,
+          width: 10,
+          height: 10,
           transform: "translate(-50%, -50%)",
           background: "#00ff7b",
           borderRadius: "50%",
           boxShadow: "0 0 10px #00ff7b",
+          zIndex: 10,
         }}
       />
 
-      {/* ARROW */}
+      {/* NORTH ARROW */}
       <div
         style={{
           position: "absolute",
@@ -131,22 +146,23 @@ function MiniMap({ planeRef, heading }) {
           borderLeft: "6px solid transparent",
           borderRight: "6px solid transparent",
           borderBottom: "14px solid white",
+          zIndex: 10,
         }}
       />
 
-      {/* radar pulse */}
+      {/* radar glow */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          boxShadow: "inset 0 0 25px rgba(0,255,120,0.25)",
+          boxShadow: "inset 0 0 20px rgba(0,255,120,0.2)",
           borderRadius: "50%",
+          pointerEvents: "none",
         }}
       />
     </div>
   );
 }
-
 
 // ================= GROUND =================
 function Ground({ planeRef, center }) {
