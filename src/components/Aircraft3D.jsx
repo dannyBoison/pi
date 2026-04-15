@@ -7,6 +7,10 @@ import * as THREE from "three";
 function Tile({ url, position, size }) {
   const texture = useTexture(url);
 
+  // ✅ improve rendering quality
+  texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.anisotropy = 16;
+
   return (
     <mesh position={position} rotation={[-Math.PI / 2, 0, 0]}>
       <planeGeometry args={[size, size]} />
@@ -21,11 +25,24 @@ function Ground({ planeRef, center }) {
   const tileSize = 120;
 
   const groupRef = useRef();
-  const tilesRef = useRef(new Map()); // store tiles
+  const tilesRef = useRef(new Map());
   const [tiles, setTiles] = useState([]);
 
+  const maxTile = Math.pow(2, zoom);
+
+  // ✅ FIX: normalize tile indices
+  const normalizeTile = (x, y) => {
+    // wrap X (infinite world)
+    x = ((x % maxTile) + maxTile) % maxTile;
+
+    // clamp Y (no negative / overflow)
+    if (y < 0 || y >= maxTile) return null;
+
+    return { x, y };
+  };
+
   const latLonToTile = (lat, lon) => {
-    const x = Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
+    const x = Math.floor(((lon + 180) / 360) * maxTile);
     const y = Math.floor(
       ((1 -
         Math.log(
@@ -34,13 +51,16 @@ function Ground({ planeRef, center }) {
         ) /
         Math.PI) /
         2) *
-        Math.pow(2, zoom)
+        maxTile
     );
     return { x, y };
   };
 
   const addTile = (x, y, baseX, baseY) => {
-    const key = `${x},${y}`;
+    const normalized = normalizeTile(x, y);
+    if (!normalized) return;
+
+    const key = `${normalized.x},${normalized.y}`;
     if (tilesRef.current.has(key)) return;
 
     const worldX = (x - baseX) * tileSize;
@@ -48,17 +68,15 @@ function Ground({ planeRef, center }) {
 
     const tile = {
       key,
-      url: `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`,
+      url: `https://tile.openstreetmap.org/${zoom}/${normalized.x}/${normalized.y}.png`,
       position: [worldX, 0, worldZ],
-      x,
-      y
     };
 
     tilesRef.current.set(key, tile);
   };
 
-  const removeFarTiles = (planeX, planeZ, baseX, baseY) => {
-    const maxDistance = tileSize * 10;
+  const removeFarTiles = (planeX, planeZ) => {
+    const maxDistance = tileSize * 12;
 
     tilesRef.current.forEach((tile, key) => {
       const dx = tile.position[0] - planeX;
@@ -71,7 +89,7 @@ function Ground({ planeRef, center }) {
   };
 
   const updateTiles = (planePos, baseTile) => {
-    const range = 6; // bigger = smoother loading
+    const range = 7; // ✅ slightly increased for smoother loading
 
     for (let i = -range; i <= range; i++) {
       for (let j = -range; j <= range; j++) {
@@ -79,7 +97,7 @@ function Ground({ planeRef, center }) {
       }
     }
 
-    removeFarTiles(planePos.x, planePos.z, baseTile.x, baseTile.y);
+    removeFarTiles(planePos.x, planePos.z);
 
     setTiles(Array.from(tilesRef.current.values()));
   };
@@ -97,13 +115,13 @@ function Ground({ planeRef, center }) {
 
     const p = planeRef.current.position;
 
-    // Convert plane world position to tile movement
+    // movement → tile shift
     const moveX = Math.floor(p.x / tileSize);
     const moveZ = Math.floor(p.z / tileSize);
 
     const baseTile = {
       x: baseTileRef.current.x + moveX,
-      y: baseTileRef.current.y + moveZ
+      y: baseTileRef.current.y + moveZ,
     };
 
     updateTiles(p, baseTile);
@@ -117,6 +135,7 @@ function Ground({ planeRef, center }) {
     </group>
   );
 }
+
 // ================= COMPASS =================
 function Compass({ heading }) {
   return (
@@ -211,7 +230,6 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
     velocity.current.lerp(forward, 0.05);
     p.position.add(velocity.current);
 
-    // ✅ send heading to compass
     setHeading(rotation.current.yaw);
 
     const camOffset = new THREE.Vector3(0, 4, 10);
@@ -258,7 +276,6 @@ export default function FlightSimulation() {
 
   const handleSearch = async (e) => {
     e.preventDefault();
-
     if (!city) return;
 
     try {
@@ -286,10 +303,8 @@ export default function FlightSimulation() {
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
 
-      {/* 🧭 Compass */}
       <Compass heading={heading} />
 
-      {/* UI */}
       <div style={{
         position: "absolute",
         top: 20,
@@ -318,7 +333,6 @@ export default function FlightSimulation() {
         <color attach="background" args={["#87CEEB"]} />
         <ambientLight intensity={0.6} />
         <directionalLight position={[100, 100, 50]} intensity={2} />
-
         <Sky sunPosition={[100, 20, 100]} />
 
         <Ground planeRef={planeRef} center={center} />
