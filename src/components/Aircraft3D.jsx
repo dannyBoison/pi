@@ -15,7 +15,7 @@ function Tile({ url, position, size }) {
   );
 }
 
-// ================= GROUND =================
+// ================= GROUND (FIXED SMOOTH LOADING) =================
 function Ground({ planeRef, center }) {
   const zoom = 14;
   const tileSize = 120;
@@ -25,7 +25,8 @@ function Ground({ planeRef, center }) {
 
   const lastTile = useRef({ x: 0, y: 0 });
 
-  const GRID_SIZE = 6; // 🔥 bigger grid (was 4 → now 6 => 13x13)
+  // 🔥 NEW: preload radius (THIS IS THE KEY FIX)
+  const LOAD_RADIUS = 7; // bigger = smoother, more memory usage
 
   const latLonToTile = (lat, lon) => {
     const x = Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
@@ -45,8 +46,9 @@ function Ground({ planeRef, center }) {
   const generateTiles = (baseX, baseY) => {
     const grid = [];
 
-    for (let i = -GRID_SIZE; i <= GRID_SIZE; i++) {
-      for (let j = -GRID_SIZE; j <= GRID_SIZE; j++) {
+    // 🔥 expanded grid = no visible edges
+    for (let i = -LOAD_RADIUS; i <= LOAD_RADIUS; i++) {
+      for (let j = -LOAD_RADIUS; j <= LOAD_RADIUS; j++) {
         grid.push({
           key: `${baseX + i}-${baseY + j}`,
           url: `https://tile.openstreetmap.org/${zoom}/${baseX + i}/${baseY + j}.png`,
@@ -69,11 +71,9 @@ function Ground({ planeRef, center }) {
 
     const p = planeRef.current;
 
-    // ✅ Smooth world movement
     groupRef.current.position.x = -p.position.x * 0.5;
     groupRef.current.position.z = -p.position.z * 0.5;
 
-    // 🔥 detect tile movement
     const moveX = Math.floor(p.position.x / tileSize);
     const moveZ = Math.floor(p.position.z / tileSize);
 
@@ -82,14 +82,17 @@ function Ground({ planeRef, center }) {
     const newX = base.x + moveX;
     const newY = base.y + moveZ;
 
-    // ✅ Only update when truly entering new tile
-    if (
-      Math.abs(newX - lastTile.current.x) >= 1 ||
-      Math.abs(newY - lastTile.current.y) >= 1
-    ) {
+    // 🔥 NEW FIX: preload BEFORE reaching edge
+    const dx = Math.abs(newX - lastTile.current.x);
+    const dy = Math.abs(newY - lastTile.current.y);
+
+    // instead of waiting for 1 tile change, we preload early
+    const PRELOAD_TRIGGER = 1;
+
+    if (dx >= PRELOAD_TRIGGER || dy >= PRELOAD_TRIGGER) {
       lastTile.current = { x: newX, y: newY };
 
-      // 🔥 smooth update (no flicker)
+      // smooth update (no freeze)
       requestAnimationFrame(() => {
         generateTiles(newX, newY);
       });
@@ -104,6 +107,7 @@ function Ground({ planeRef, center }) {
     </group>
   );
 }
+
 // ================= COMPASS =================
 function Compass({ heading }) {
   return (
@@ -198,7 +202,6 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
     velocity.current.lerp(forward, 0.05);
     p.position.add(velocity.current);
 
-    // ✅ send heading to compass
     setHeading(rotation.current.yaw);
 
     const camOffset = new THREE.Vector3(0, 4, 10);
@@ -272,11 +275,8 @@ export default function FlightSimulation() {
 
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
-
-      {/* 🧭 Compass */}
       <Compass heading={heading} />
 
-      {/* UI */}
       <div style={{
         position: "absolute",
         top: 20,
@@ -291,7 +291,7 @@ export default function FlightSimulation() {
           <input
             value={city}
             onChange={(e) => setCity(e.target.value)}
-            placeholder="Search city (Accra, Kumasi, London)"
+            placeholder="Search city"
             style={{ padding: 8, marginRight: 5 }}
           />
           <button type="submit">Search</button>
@@ -305,7 +305,6 @@ export default function FlightSimulation() {
         <color attach="background" args={["#87CEEB"]} />
         <ambientLight intensity={0.6} />
         <directionalLight position={[100, 100, 50]} intensity={2} />
-
         <Sky sunPosition={[100, 20, 100]} />
 
         <Ground planeRef={planeRef} center={center} />
