@@ -38,7 +38,114 @@ function Tile({ url, position, size }) {
 
 // ================= MINI MAP (NEW GTA STYLE) =================
 
+function MiniMap({ planeRef, heading }) {
+  const mapRef = useRef();
 
+  const size = 170;
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        bottom: 20,
+        right: 20,
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        overflow: "hidden",
+        border: "2px solid rgba(0,255,120,0.4)",
+        boxShadow: "0 0 20px rgba(0,255,120,0.2)",
+        zIndex: 200,
+      }}
+    >
+      {/* MINI WORLD VIEW (REAL MAP FEED) */}
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          transform: `rotate(${-heading}rad) scale(0.25)`,
+          transformOrigin: "center",
+        }}
+      >
+        {/* This is your actual 3D world reused visually */}
+        <div
+          ref={mapRef}
+          style={{
+            width: "400%",
+            height: "400%",
+            position: "absolute",
+            left: "-150%",
+            top: "-150%",
+          }}
+        >
+          {/* Fake radar ground base */}
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              background:
+                "linear-gradient(180deg, #0a0f0a, #050805)",
+              position: "absolute",
+            }}
+          />
+
+          {/* grid overlay like GTA terrain scan */}
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              backgroundImage:
+                "radial-gradient(rgba(0,255,120,0.15) 1px, transparent 1px)",
+              backgroundSize: "18px 18px",
+              opacity: 0.4,
+              position: "absolute",
+            }}
+          />
+        </div>
+      </div>
+
+      {/* PLAYER ICON */}
+      <div
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          width: 12,
+          height: 12,
+          transform: "translate(-50%, -50%)",
+          background: "#00ff7b",
+          borderRadius: "50%",
+          boxShadow: "0 0 10px #00ff7b",
+        }}
+      />
+
+      {/* ARROW */}
+      <div
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "35%",
+          transform: "translateX(-50%)",
+          width: 0,
+          height: 0,
+          borderLeft: "6px solid transparent",
+          borderRight: "6px solid transparent",
+          borderBottom: "14px solid white",
+        }}
+      />
+
+      {/* radar pulse */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          boxShadow: "inset 0 0 25px rgba(0,255,120,0.25)",
+          borderRadius: "50%",
+        }}
+      />
+    </div>
+  );
+}
 
 
 // ================= GROUND =================
