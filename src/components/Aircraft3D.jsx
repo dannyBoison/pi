@@ -159,7 +159,7 @@ function MiniMap({ lat, lon }) {
 }
 
 // ================= PLANE =================
-const PLANE_FIX_ROTATION_Y = Math.PI; // 🔥 KEY FIX (turn plane forward correctly)
+const PLANE_FIX_ROTATION_Y = Math.PI;
 
 const Plane = React.forwardRef(({ speed, setStats, setHeading, setGPS }, planeRef) => {
   const { camera } = useThree();
@@ -196,13 +196,11 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading, setGPS }, planeRe
     const p = planeRef.current;
     if (!p) return;
 
-    // rotation controls
     if (keys.current["a"]) rotation.current.yaw += 0.01;
     if (keys.current["d"]) rotation.current.yaw -= 0.01;
     if (keys.current["w"]) rotation.current.pitch += 0.008;
     if (keys.current["s"]) rotation.current.pitch -= 0.008;
 
-    // ✅ APPLY FIX ROTATION HERE
     p.rotation.set(
       rotation.current.pitch,
       rotation.current.yaw + PLANE_FIX_ROTATION_Y,
@@ -221,11 +219,16 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading, setGPS }, planeRe
     setGPS({ ...gps.current });
     setHeading(rotation.current.yaw);
 
-    const camOffset = new THREE.Vector3(0, 8, 22);
+    // ✈️ FIXED CAMERA (farther + better view)
+    const camOffset = new THREE.Vector3(0, 25, 90); // 🔥 BIG CHANGE HERE
     camOffset.applyEuler(p.rotation);
 
-    camera.position.lerp(p.position.clone().add(camOffset), 0.08);
-    camera.lookAt(p.position.clone().add(new THREE.Vector3(0, 1, 0)));
+    camera.position.lerp(
+      p.position.clone().add(camOffset),
+      0.03 // smoother, less zoom feel
+    );
+
+    camera.lookAt(p.position.clone().add(new THREE.Vector3(0, 2, 0)));
 
     setStats({
       speed: speed.toFixed(2),
@@ -255,8 +258,7 @@ export default function FlightSimulation() {
 
   const planeRef = useRef();
 
-  const [city, setCity] = useState("");
-  const [center, setCenter] = useState({
+  const [center] = useState({
     lat: 5.6037,
     lon: -0.1870,
   });
@@ -280,7 +282,7 @@ export default function FlightSimulation() {
         <p>Altitude: {stats.altitude}</p>
       </div>
 
-      <Canvas camera={{ position: [0, 10, 50], fov: 75 }}>
+      <Canvas camera={{ position: [0, 15, 120], fov: 75 }}>
         <color attach="background" args={["#87CEEB"]} />
         <ambientLight intensity={0.6} />
         <directionalLight position={[100, 100, 50]} intensity={2} />
@@ -301,3 +303,6 @@ export default function FlightSimulation() {
     </div>
   );
 }
+
+
+✔ Camera is MUCH further back
