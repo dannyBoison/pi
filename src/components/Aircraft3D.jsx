@@ -6,16 +6,143 @@ import * as THREE from "three";
 // ================= TILE =================
 function Tile({ url, position, size }) {
   const texture = useTexture(url);
+  const materialRef = useRef();
+  const [opacity, setOpacity] = useState(0);
 
-  // ✅ improve rendering quality
+  useEffect(() => {
+    let i = 0;
+    const interval = setInterval(() => {
+      i += 0.1;
+      setOpacity(Math.min(i, 1));
+      if (i >= 1) clearInterval(interval);
+    }, 25);
+
+    return () => clearInterval(interval);
+  }, []);
+
   texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
   texture.anisotropy = 16;
 
   return (
     <mesh position={position} rotation={[-Math.PI / 2, 0, 0]}>
       <planeGeometry args={[size, size]} />
-      <meshStandardMaterial map={texture} />
+      <meshStandardMaterial
+        ref={materialRef}
+        map={texture}
+        transparent
+        opacity={opacity}
+      />
     </mesh>
+  );
+}
+
+// ================= MINI MAP (NEW GTA STYLE) =================
+function MiniMap({ planeRef, heading }) {
+  const [pos, setPos] = useState({ x: 0, z: 0 });
+
+  useEffect(() => {
+    let frame;
+
+    const update = () => {
+      if (planeRef.current) {
+        setPos({
+          x: planeRef.current.position.x,
+          z: planeRef.current.position.z,
+        });
+      }
+
+      frame = requestAnimationFrame(update);
+    };
+
+    update();
+
+    return () => cancelAnimationFrame(frame);
+  }, [planeRef]);
+
+  const size = 160;
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        bottom: 20,
+        right: 20,
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: "rgba(0,0,0,0.6)",
+        border: "3px solid rgba(255,255,255,0.3)",
+        backdropFilter: "blur(6px)",
+        overflow: "hidden",
+        zIndex: 200,
+      }}
+    >
+      {/* rotating map container */}
+      <div
+        style={{
+          position: "absolute",
+          width: "100%",
+          height: "100%",
+          transform: `rotate(${-heading}rad)`,
+          transition: "transform 0.1s linear",
+        }}
+      >
+        {/* grid background */}
+        <div
+          style={{
+            position: "absolute",
+            width: "200%",
+            height: "200%",
+            left: "-50%",
+            top: "-50%",
+            backgroundImage:
+              "radial-gradient(rgba(255,255,255,0.2) 1px, transparent 1px)",
+            backgroundSize: "20px 20px",
+          }}
+        />
+
+        {/* player position dot */}
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 10,
+            height: 10,
+            background: "lime",
+            borderRadius: "50%",
+            boxShadow: "0 0 10px lime",
+          }}
+        />
+
+        {/* direction arrow */}
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "40%",
+            transform: "translateX(-50%)",
+            width: 0,
+            height: 0,
+            borderLeft: "6px solid transparent",
+            borderRight: "6px solid transparent",
+            borderBottom: "12px solid white",
+          }}
+        />
+      </div>
+
+      {/* border glow */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          borderRadius: "50%",
+          boxShadow: "inset 0 0 20px rgba(0,255,0,0.2)",
+          pointerEvents: "none",
+        }}
+      />
+    </div>
   );
 }
 
@@ -28,31 +155,32 @@ function Ground({ planeRef, center }) {
   const tilesRef = useRef(new Map());
   const [tiles, setTiles] = useState([]);
 
+  const baseTileRef = useRef({ x: 0, y: 0 });
+
+  const lastUpdateRef = useRef(0);
+  const UPDATE_INTERVAL = 120;
+
   const maxTile = Math.pow(2, zoom);
 
-  // ✅ FIX: normalize tile indices
   const normalizeTile = (x, y) => {
-    // wrap X (infinite world)
     x = ((x % maxTile) + maxTile) % maxTile;
-
-    // clamp Y (no negative / overflow)
     if (y < 0 || y >= maxTile) return null;
-
     return { x, y };
   };
 
   const latLonToTile = (lat, lon) => {
     const x = Math.floor(((lon + 180) / 360) * maxTile);
-    const y = Math.floor(
-      ((1 -
-        Math.log(
-          Math.tan((lat * Math.PI) / 180) +
-          1 / Math.cos((lat * Math.PI) / 180)
-        ) /
-        Math.PI) /
-        2) *
-        maxTile
-    );
+    const y =
+      Math.floor(
+        ((1 -
+          Math.log(
+            Math.tan((lat * Math.PI) / 180) +
+              1 / Math.cos((lat * Math.PI) / 180)
+          ) /
+            Math.PI) /
+          2) *
+          maxTile
+      );
     return { x, y };
   };
 
@@ -66,13 +194,11 @@ function Ground({ planeRef, center }) {
     const worldX = (x - baseX) * tileSize;
     const worldZ = (y - baseY) * tileSize;
 
-    const tile = {
+    tilesRef.current.set(key, {
       key,
       url: `https://tile.openstreetmap.org/${zoom}/${normalized.x}/${normalized.y}.png`,
       position: [worldX, 0, worldZ],
-    };
-
-    tilesRef.current.set(key, tile);
+    });
   };
 
   const removeFarTiles = (planeX, planeZ) => {
@@ -89,20 +215,25 @@ function Ground({ planeRef, center }) {
   };
 
   const updateTiles = (planePos, baseTile) => {
-    const range = 7; // ✅ slightly increased for smoother loading
+    const range = 8;
+
+    const dirX = Math.sign(planePos.x);
+    const dirZ = Math.sign(planePos.z);
 
     for (let i = -range; i <= range; i++) {
       for (let j = -range; j <= range; j++) {
-        addTile(baseTile.x + i, baseTile.y + j, baseTile.x, baseTile.y);
+        addTile(
+          baseTile.x + i + dirX * 3,
+          baseTile.y + j + dirZ * 3,
+          baseTile.x,
+          baseTile.y
+        );
       }
     }
 
     removeFarTiles(planePos.x, planePos.z);
-
     setTiles(Array.from(tilesRef.current.values()));
   };
-
-  const baseTileRef = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
     const t = latLonToTile(center.lat, center.lon);
@@ -110,12 +241,15 @@ function Ground({ planeRef, center }) {
     tilesRef.current.clear();
   }, [center]);
 
-  useFrame(() => {
-    if (!planeRef.current || !groupRef.current) return;
+  useFrame((state) => {
+    if (!planeRef.current) return;
+
+    const now = state.clock.elapsedTime * 1000;
+    if (now - lastUpdateRef.current < UPDATE_INTERVAL) return;
+    lastUpdateRef.current = now;
 
     const p = planeRef.current.position;
 
-    // movement → tile shift
     const moveX = Math.floor(p.x / tileSize);
     const moveZ = Math.floor(p.z / tileSize);
 
@@ -232,14 +366,9 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
 
     setHeading(rotation.current.yaw);
 
-    const camOffset = new THREE.Vector3(0, 4, 10);
-    camOffset.applyEuler(p.rotation);
+    const camOffset = new THREE.Vector3(0, 4, 10).applyEuler(p.rotation);
 
-    camera.position.lerp(
-      p.position.clone().add(camOffset),
-      0.08
-    );
-
+    camera.position.lerp(p.position.clone().add(camOffset), 0.08);
     camera.lookAt(p.position.clone().add(new THREE.Vector3(0, 1, 0)));
 
     setStats({
@@ -278,32 +407,27 @@ export default function FlightSimulation() {
     e.preventDefault();
     if (!city) return;
 
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${city}`
-      );
-      const data = await res.json();
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${city}`
+    );
+    const data = await res.json();
 
-      if (!data.length) return alert("City not found");
+    if (!data.length) return alert("City not found");
 
-      setCenter({
-        lat: parseFloat(data[0].lat),
-        lon: parseFloat(data[0].lon),
-      });
+    setCenter({
+      lat: parseFloat(data[0].lat),
+      lon: parseFloat(data[0].lon),
+    });
 
-      if (planeRef.current) {
-        planeRef.current.position.set(0, 3, 0);
-      }
-
-    } catch {
-      alert("Search failed");
-    }
+    planeRef.current?.position.set(0, 3, 0);
   };
 
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
-
       <Compass heading={heading} />
+
+      {/* ✅ GTA MINI MAP */}
+      <MiniMap planeRef={planeRef} heading={heading} />
 
       <div style={{
         position: "absolute",
@@ -319,7 +443,7 @@ export default function FlightSimulation() {
           <input
             value={city}
             onChange={(e) => setCity(e.target.value)}
-            placeholder="Search city (Accra, Kumasi, London)"
+            placeholder="Search city"
             style={{ padding: 8, marginRight: 5 }}
           />
           <button type="submit">Search</button>
@@ -338,12 +462,7 @@ export default function FlightSimulation() {
         <Ground planeRef={planeRef} center={center} />
 
         <Suspense fallback={null}>
-          <Plane
-            speed={0.12}
-            setStats={setStats}
-            setHeading={setHeading}
-            ref={planeRef}
-          />
+          <Plane speed={0.12} setStats={setStats} setHeading={setHeading} ref={planeRef} />
         </Suspense>
       </Canvas>
     </div>
