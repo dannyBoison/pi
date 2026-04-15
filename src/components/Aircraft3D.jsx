@@ -159,9 +159,7 @@ function MiniMap({ lat, lon }) {
 }
 
 // ================= PLANE =================
-const PLANE_FIX_ROTATION_Y = Math.PI;
-
-const Plane = React.forwardRef(({ speed, setStats, setHeading, setGPS }, planeRef) => {
+const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
   const { camera } = useThree();
 
   let model;
@@ -175,9 +173,17 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading, setGPS }, planeRe
   const rotation = useRef({ pitch: 0, yaw: 0, roll: 0 });
   const keys = useRef({});
 
-  const gps = useRef({ lat: 5.6037, lon: -0.1870 });
+  useEffect(() => {
+    if (model) {
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3();
+      box.getSize(size);
 
-  const metersToDeg = 0.00002;
+      const scale = 2 / Math.max(size.x, size.y, size.z);
+      model.scale.set(scale, scale, scale);
+      model.rotation.y = Math.PI;
+    }
+  }, [model]);
 
   useEffect(() => {
     const down = (e) => (keys.current[e.key.toLowerCase()] = true);
@@ -203,7 +209,7 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading, setGPS }, planeRe
 
     p.rotation.set(
       rotation.current.pitch,
-      rotation.current.yaw + PLANE_FIX_ROTATION_Y,
+      rotation.current.yaw,
       rotation.current.roll
     );
 
@@ -213,28 +219,25 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading, setGPS }, planeRe
     velocity.current.lerp(forward, 0.05);
     p.position.add(velocity.current);
 
-    gps.current.lat += forward.z * metersToDeg;
-    gps.current.lon += forward.x * metersToDeg;
-
-    setGPS({ ...gps.current });
+    // ✅ send heading to compass
     setHeading(rotation.current.yaw);
 
-    // ✈️ FIXED CAMERA (farther + better view)
-    const camOffset = new THREE.Vector3(0, 25, 90); // 🔥 BIG CHANGE HERE
+    const camOffset = new THREE.Vector3(0, 4, 10);
     camOffset.applyEuler(p.rotation);
 
     camera.position.lerp(
       p.position.clone().add(camOffset),
-      0.03 // smoother, less zoom feel
+      0.08
     );
 
-    camera.lookAt(p.position.clone().add(new THREE.Vector3(0, 2, 0)));
+    camera.lookAt(p.position.clone().add(new THREE.Vector3(0, 1, 0)));
 
     setStats({
       speed: speed.toFixed(2),
       altitude: p.position.y.toFixed(1),
     });
   });
+
 
   return (
     <group ref={planeRef} position={[0, 3, 0]}>
