@@ -40,36 +40,9 @@ function Tile({ url, position, size }) {
 
 
 function MiniMap({ planeRef, heading }) {
-  const [pos, setPos] = useState({ x: 0, z: 0 });
-  const [trail, setTrail] = useState([]);
-
-  // smooth tracking
-  useEffect(() => {
-    let frame;
-
-    const update = () => {
-      if (planeRef.current) {
-        const x = planeRef.current.position.x;
-        const z = planeRef.current.position.z;
-
-        setPos({ x, z });
-
-        // trail (last 20 positions)
-        setTrail((prev) => {
-          const next = [...prev, { x, z }];
-          return next.slice(-20);
-        });
-      }
-
-      frame = requestAnimationFrame(update);
-    };
-
-    update();
-    return () => cancelAnimationFrame(frame);
-  }, [planeRef]);
+  const mapRef = useRef();
 
   const size = 170;
-  const scale = 0.06;
 
   return (
     <div
@@ -80,134 +53,97 @@ function MiniMap({ planeRef, heading }) {
         width: size,
         height: size,
         borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(0,0,0,0.75), rgba(0,0,0,0.95))",
-        border: "2px solid rgba(0,255,120,0.35)",
-        boxShadow: "0 0 25px rgba(0,255,120,0.15)",
         overflow: "hidden",
+        border: "2px solid rgba(0,255,120,0.4)",
+        boxShadow: "0 0 20px rgba(0,255,120,0.2)",
         zIndex: 200,
       }}
     >
-      {/* RADAR SWEEP EFFECT */}
+      {/* MINI WORLD VIEW (REAL MAP FEED) */}
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          transform: `rotate(${-heading}rad) scale(0.25)`,
+          transformOrigin: "center",
+        }}
+      >
+        {/* This is your actual 3D world reused visually */}
+        <div
+          ref={mapRef}
+          style={{
+            width: "400%",
+            height: "400%",
+            position: "absolute",
+            left: "-150%",
+            top: "-150%",
+          }}
+        >
+          {/* Fake radar ground base */}
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              background:
+                "linear-gradient(180deg, #0a0f0a, #050805)",
+              position: "absolute",
+            }}
+          />
+
+          {/* grid overlay like GTA terrain scan */}
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              backgroundImage:
+                "radial-gradient(rgba(0,255,120,0.15) 1px, transparent 1px)",
+              backgroundSize: "18px 18px",
+              opacity: 0.4,
+              position: "absolute",
+            }}
+          />
+        </div>
+      </div>
+
+      {/* PLAYER ICON */}
       <div
         style={{
           position: "absolute",
-          width: "100%",
-          height: "100%",
-          background:
-            "conic-gradient(from 0deg, rgba(0,255,120,0.0), rgba(0,255,120,0.15), rgba(0,255,120,0.0))",
-          animation: "spin 3s linear infinite",
-          opacity: 0.6,
+          left: "50%",
+          top: "50%",
+          width: 12,
+          height: 12,
+          transform: "translate(-50%, -50%)",
+          background: "#00ff7b",
+          borderRadius: "50%",
+          boxShadow: "0 0 10px #00ff7b",
         }}
       />
 
-      {/* rotating world */}
+      {/* ARROW */}
       <div
         style={{
           position: "absolute",
-          width: "100%",
-          height: "100%",
-          transform: `rotate(${-heading}rad)`,
-          transition: "transform 0.1s linear",
+          left: "50%",
+          top: "35%",
+          transform: "translateX(-50%)",
+          width: 0,
+          height: 0,
+          borderLeft: "6px solid transparent",
+          borderRight: "6px solid transparent",
+          borderBottom: "14px solid white",
         }}
-      >
-        {/* faint terrain grid (fake map feel) */}
-        <div
-          style={{
-            position: "absolute",
-            width: "220%",
-            height: "220%",
-            left: "-60%",
-            top: "-60%",
-            backgroundImage:
-              "radial-gradient(rgba(0,255,120,0.12) 1px, transparent 1px)",
-            backgroundSize: "14px 14px",
-            filter: "blur(0.2px)",
-          }}
-        />
+      />
 
-        {/* movement trail */}
-        {trail.map((t, i) => {
-          const x = t.x * scale;
-          const z = t.z * scale;
-
-          return (
-            <div
-              key={i}
-              style={{
-                position: "absolute",
-                left: "50%",
-                top: "50%",
-                width: 4,
-                height: 4,
-                transform: `translate(${x}px, ${z}px)`,
-                background: "rgba(0,255,120,0.5)",
-                borderRadius: "50%",
-                opacity: i / trail.length,
-                boxShadow: "0 0 6px rgba(0,255,120,0.5)",
-              }}
-            />
-          );
-        })}
-
-        {/* player dot */}
-        <div
-          style={{
-            position: "absolute",
-            left: "50%",
-            top: "50%",
-            width: 10,
-            height: 10,
-            transform: "translate(-50%, -50%)",
-            background: "#00ff7b",
-            borderRadius: "50%",
-            boxShadow: "0 0 12px #00ff7b",
-          }}
-        />
-
-        {/* direction arrow */}
-        <div
-          style={{
-            position: "absolute",
-            left: "50%",
-            top: "38%",
-            transform: "translateX(-50%)",
-            width: 0,
-            height: 0,
-            borderLeft: "6px solid transparent",
-            borderRight: "6px solid transparent",
-            borderBottom: "14px solid white",
-            filter: "drop-shadow(0 0 2px white)",
-          }}
-        />
-      </div>
-
-      {/* pulse ring animation */}
+      {/* radar pulse */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          borderRadius: "50%",
           boxShadow: "inset 0 0 25px rgba(0,255,120,0.25)",
-          animation: "pulse 2.5s infinite",
-          pointerEvents: "none",
+          borderRadius: "50%",
         }}
       />
-
-      {/* CSS animations */}
-      <style>
-        {`
-          @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-          }
-
-          @keyframes pulse {
-            0% { box-shadow: inset 0 0 15px rgba(0,255,120,0.15); }
-            50% { box-shadow: inset 0 0 30px rgba(0,255,120,0.35); }
-            100% { box-shadow: inset 0 0 15px rgba(0,255,120,0.15); }
-          }
-        `}
-      </style>
     </div>
   );
 }
