@@ -24,8 +24,7 @@ function Ground({ planeRef, center }) {
   const [tiles, setTiles] = useState([]);
 
   const lastTile = useRef({ x: 0, y: 0 });
-
-  const LOAD_RADIUS = 7;
+  const LOAD_RADIUS = 12;
 
   const latLonToTile = (lat, lon) => {
     const x = Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
@@ -80,7 +79,10 @@ function Ground({ planeRef, center }) {
     const newX = base.x + moveX;
     const newY = base.y + moveZ;
 
-    if (Math.abs(newX - lastTile.current.x) >= 1 || Math.abs(newY - lastTile.current.y) >= 1) {
+    if (
+      Math.abs(newX - lastTile.current.x) >= 1 ||
+      Math.abs(newY - lastTile.current.y) >= 1
+    ) {
       lastTile.current = { x: newX, y: newY };
 
       requestAnimationFrame(() => {
@@ -150,13 +152,15 @@ function MiniMap({ lat, lon }) {
         width="100%"
         height="100%"
         style={{ border: 0 }}
-        src={`https://www.openstreetmap.org/export/embed.html?bbox=${lon-0.05},${lat-0.05},${lon+0.05},${lat+0.05}&layer=mapnik`}
+        src={`https://www.openstreetmap.org/export/embed.html?bbox=${lon - 0.05},${lat - 0.05},${lon + 0.05},${lat + 0.05}&layer=mapnik`}
       />
     </div>
   );
 }
 
 // ================= PLANE =================
+const PLANE_FIX_ROTATION_Y = Math.PI; // 🔥 KEY FIX (turn plane forward correctly)
+
 const Plane = React.forwardRef(({ speed, setStats, setHeading, setGPS }, planeRef) => {
   const { camera } = useThree();
 
@@ -192,14 +196,16 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading, setGPS }, planeRe
     const p = planeRef.current;
     if (!p) return;
 
+    // rotation controls
     if (keys.current["a"]) rotation.current.yaw += 0.01;
     if (keys.current["d"]) rotation.current.yaw -= 0.01;
     if (keys.current["w"]) rotation.current.pitch += 0.008;
     if (keys.current["s"]) rotation.current.pitch -= 0.008;
 
+    // ✅ APPLY FIX ROTATION HERE
     p.rotation.set(
       rotation.current.pitch,
-      rotation.current.yaw,
+      rotation.current.yaw + PLANE_FIX_ROTATION_Y,
       rotation.current.roll
     );
 
@@ -209,19 +215,16 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading, setGPS }, planeRe
     velocity.current.lerp(forward, 0.05);
     p.position.add(velocity.current);
 
-    // ================= GPS SIMULATION =================
     gps.current.lat += forward.z * metersToDeg;
     gps.current.lon += forward.x * metersToDeg;
 
     setGPS({ ...gps.current });
-
     setHeading(rotation.current.yaw);
 
     const camOffset = new THREE.Vector3(0, 8, 22);
     camOffset.applyEuler(p.rotation);
 
     camera.position.lerp(p.position.clone().add(camOffset), 0.08);
-
     camera.lookAt(p.position.clone().add(new THREE.Vector3(0, 1, 0)));
 
     setStats({
@@ -233,9 +236,9 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading, setGPS }, planeRe
   return (
     <group ref={planeRef} position={[0, 3, 0]}>
       {model ? (
-        <primitive object={model} />
+        <primitive object={model} rotation={[0, PLANE_FIX_ROTATION_Y, 0]} />
       ) : (
-        <mesh>
+        <mesh rotation={[0, PLANE_FIX_ROTATION_Y, 0]}>
           <coneGeometry args={[0.5, 2, 8]} />
           <meshStandardMaterial color="red" />
         </mesh>
@@ -258,72 +261,11 @@ export default function FlightSimulation() {
     lon: -0.1870,
   });
 
-  // ================= AUTO CITY DETECTION =================
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${gps.lat}&lon=${gps.lon}`
-        );
-        const data = await res.json();
-
-        if (data?.address?.city || data?.address?.town) {
-          setCity(data.address.city || data.address.town);
-        }
-      } catch {}
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [gps]);
-
-  const handleSearch = async (e) => {
-    e.preventDefault();
-
-    if (!city) return;
-
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${city}`
-    );
-    const data = await res.json();
-
-    if (!data.length) return;
-
-    setCenter({
-      lat: parseFloat(data[0].lat),
-      lon: parseFloat(data[0].lon),
-    });
-
-    if (planeRef.current) {
-      planeRef.current.position.set(0, 3, 0);
-    }
-  };
-
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
-
-      {/* 🧭 COMPASS */}
       <Compass heading={heading} />
-
-      {/* 📍 LIVE GPS */}
-      <div style={{
-        position: "absolute",
-        top: 20,
-        right: 20,
-        zIndex: 100,
-        background: "#000000cc",
-        padding: 10,
-        borderRadius: 10,
-        color: "white"
-      }}>
-        <p>📍 Lat: {gps.lat.toFixed(5)}</p>
-        <p>📍 Lon: {gps.lon.toFixed(5)}</p>
-        <p>🏙️ {city}</p>
-      </div>
-
-      {/* 🗺️ MINI MAP */}
       <MiniMap lat={gps.lat} lon={gps.lon} />
 
-      {/* UI */}
       <div style={{
         position: "absolute",
         top: 20,
@@ -334,20 +276,11 @@ export default function FlightSimulation() {
         borderRadius: 10,
         color: "white"
       }}>
-        <form onSubmit={handleSearch}>
-          <input
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            placeholder="Search city"
-            style={{ padding: 8, marginRight: 5 }}
-          />
-          <button>Search</button>
-        </form>
-
         <p>Speed: {stats.speed}</p>
         <p>Altitude: {stats.altitude}</p>
       </div>
-      <Canvas camera={{ position: [0, 10, 25], fov: 75 }}>
+
+      <Canvas camera={{ position: [0, 10, 50], fov: 75 }}>
         <color attach="background" args={["#87CEEB"]} />
         <ambientLight intensity={0.6} />
         <directionalLight position={[100, 100, 50]} intensity={2} />
