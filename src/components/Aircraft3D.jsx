@@ -61,38 +61,41 @@ function Ground({ planeRef, center }) {
   }, [center]);
 
   useFrame(() => {
-    if (!planeRef.current || !groupRef.current) return;
+  if (!planeRef.current || !groupRef.current) return;
 
-    const p = planeRef.current;
+  const p = planeRef.current;
 
-    groupRef.current.position.x = -p.position.x * 0.5;
-    groupRef.current.position.z = -p.position.z * 0.5;
+  // move world
+  groupRef.current.position.x = -p.position.x * 0.5;
+  groupRef.current.position.z = -p.position.z * 0.5;
 
-    const threshold = tileSize * 2;
+  const threshold = tileSize;
 
-    const dx = p.position.x - lastUpdate.current.x;
-    const dz = p.position.z - lastUpdate.current.z;
+  const dx = p.position.x - lastUpdate.current.x;
+  const dz = p.position.z - lastUpdate.current.z;
 
-    if (Math.abs(dx) > threshold || Math.abs(dz) > threshold) {
-      lastUpdate.current = {
-        x: p.position.x,
-        z: p.position.z,
-      };
+  if (Math.abs(dx) > threshold || Math.abs(dz) > threshold) {
+    lastUpdate.current = {
+      x: p.position.x,
+      z: p.position.z,
+    };
 
-      const moveX = Math.round(p.position.x / tileSize);
-      const moveZ = Math.round(p.position.z / tileSize);
+    // ✅ FIX: use floor instead of round (accurate movement)
+    const moveX = Math.floor(p.position.x / tileSize);
+    const moveZ = Math.floor(p.position.z / tileSize);
 
-      const newX = tileOffset.current.x + moveX;
-      const newY = tileOffset.current.y + moveZ;
+    // ✅ FIX: calculate from ORIGINAL center (not accumulated drift)
+    const base = latLonToTile(center.lat, center.lon);
 
-      tileOffset.current = { x: newX, y: newY };
+    const newX = base.x + moveX;
+    const newY = base.y + moveZ;
 
-      generateTiles(newX, newY);
+    generateTiles(newX, newY);
 
-      p.position.set(0, p.position.y, 0);
-    }
-  });
-
+    // reset plane (important for stability)
+    p.position.set(0, p.position.y, 0);
+  }
+});
   return (
     <group ref={groupRef}>
       {tiles.map((tile, i) => (
