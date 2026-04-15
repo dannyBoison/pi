@@ -57,7 +57,6 @@ function Ground({ planeRef, center }) {
     const { x, y } = latLonToTile(center.lat, center.lon);
     tileOffset.current = { x, y };
     generateTiles(x, y);
-
     lastUpdate.current = { x: 0, z: 0 };
   }, [center]);
 
@@ -66,11 +65,9 @@ function Ground({ planeRef, center }) {
 
     const p = planeRef.current;
 
-    // move world
     groupRef.current.position.x = -p.position.x * 0.5;
     groupRef.current.position.z = -p.position.z * 0.5;
 
-    // 🔥 ONLY update when far (stable)
     const threshold = tileSize * 2;
 
     const dx = p.position.x - lastUpdate.current.x;
@@ -82,7 +79,6 @@ function Ground({ planeRef, center }) {
         z: p.position.z,
       };
 
-      // move tile offset logically
       const moveX = Math.round(p.position.x / tileSize);
       const moveZ = Math.round(p.position.z / tileSize);
 
@@ -93,7 +89,6 @@ function Ground({ planeRef, center }) {
 
       generateTiles(newX, newY);
 
-      // reset plane so numbers don't explode
       p.position.set(0, p.position.y, 0);
     }
   });
@@ -108,16 +103,7 @@ function Ground({ planeRef, center }) {
 }
 
 // ================= COMPASS =================
-function Compass({ planeRef }) {
-  const compassRef = useRef();
-
-  useFrame(() => {
-    if (!planeRef.current || !compassRef.current) return;
-
-    const yaw = planeRef.current.rotation.y;
-    compassRef.current.style.transform = `rotate(${-yaw}rad)`;
-  });
-
+function Compass({ heading }) {
   return (
     <div style={{
       position: "absolute",
@@ -135,7 +121,11 @@ function Compass({ planeRef }) {
       justifyContent: "center",
       fontWeight: "bold"
     }}>
-      <div ref={compassRef} style={{ position: "relative" }}>
+      <div style={{
+        position: "relative",
+        transform: `rotate(${-heading}rad)`,
+        transition: "transform 0.1s linear"
+      }}>
         N
         <div style={{ position: "absolute", right: -40, top: 0 }}>E</div>
         <div style={{ position: "absolute", bottom: -40, left: 0 }}>S</div>
@@ -146,7 +136,7 @@ function Compass({ planeRef }) {
 }
 
 // ================= PLANE =================
-const Plane = React.forwardRef(({ speed, setStats }, planeRef) => {
+const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
   const { camera } = useThree();
 
   let model;
@@ -206,6 +196,9 @@ const Plane = React.forwardRef(({ speed, setStats }, planeRef) => {
     velocity.current.lerp(forward, 0.05);
     p.position.add(velocity.current);
 
+    // ✅ send heading to compass
+    setHeading(rotation.current.yaw);
+
     const camOffset = new THREE.Vector3(0, 4, 10);
     camOffset.applyEuler(p.rotation);
 
@@ -239,6 +232,7 @@ const Plane = React.forwardRef(({ speed, setStats }, planeRef) => {
 // ================= MAIN =================
 export default function FlightSimulation() {
   const [stats, setStats] = useState({ speed: 0, altitude: 0 });
+  const [heading, setHeading] = useState(0);
   const planeRef = useRef();
 
   const [city, setCity] = useState("");
@@ -278,7 +272,7 @@ export default function FlightSimulation() {
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
 
       {/* 🧭 Compass */}
-      <Compass planeRef={planeRef} />
+      <Compass heading={heading} />
 
       {/* UI */}
       <div style={{
@@ -315,7 +309,12 @@ export default function FlightSimulation() {
         <Ground planeRef={planeRef} center={center} />
 
         <Suspense fallback={null}>
-          <Plane speed={0.12} setStats={setStats} ref={planeRef} />
+          <Plane
+            speed={0.12}
+            setStats={setStats}
+            setHeading={setHeading}
+            ref={planeRef}
+          />
         </Suspense>
       </Canvas>
     </div>
