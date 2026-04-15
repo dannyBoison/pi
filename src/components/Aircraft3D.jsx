@@ -217,7 +217,7 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading, setGPS }, planeRe
 
     setHeading(rotation.current.yaw);
 
-    const camOffset = new THREE.Vector3(0, 4, 10);
+    const camOffset = new THREE.Vector3(0, 8, 22);
     camOffset.applyEuler(p.rotation);
 
     camera.position.lerp(p.position.clone().add(camOffset), 0.08);
@@ -347,8 +347,7 @@ export default function FlightSimulation() {
         <p>Speed: {stats.speed}</p>
         <p>Altitude: {stats.altitude}</p>
       </div>
-
-      <Canvas camera={{ position: [0, 0, 10], fov: 60 }}>
+      <Canvas camera={{ position: [0, 10, 25], fov: 75 }}>
         <color attach="background" args={["#87CEEB"]} />
         <ambientLight intensity={0.6} />
         <directionalLight position={[100, 100, 50]} intensity={2} />
