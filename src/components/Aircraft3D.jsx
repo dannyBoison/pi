@@ -22,6 +22,8 @@ function Ground({ planeRef, center }) {
 
   const groupRef = useRef();
   const [tiles, setTiles] = useState([]);
+  const lastUpdate = useRef({ x: 0, z: 0 });
+  const tileOffset = useRef({ x: 0, y: 0 });
 
   const latLonToTile = (lat, lon) => {
     const x = Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
@@ -38,28 +40,62 @@ function Ground({ planeRef, center }) {
     return { x, y };
   };
 
-  useEffect(() => {
-    const { x, y } = latLonToTile(center.lat, center.lon);
-
+  const generateTiles = (baseX, baseY) => {
     const grid = [];
     for (let i = -4; i <= 4; i++) {
       for (let j = -4; j <= 4; j++) {
         grid.push({
-          url: `https://tile.openstreetmap.org/${zoom}/${x + i}/${y + j}.png`,
+          url: `https://tile.openstreetmap.org/${zoom}/${baseX + i}/${baseY + j}.png`,
           position: [i * tileSize, 0, j * tileSize],
         });
       }
     }
-
     setTiles(grid);
+  };
+
+  useEffect(() => {
+    const { x, y } = latLonToTile(center.lat, center.lon);
+    tileOffset.current = { x, y };
+    generateTiles(x, y);
+
+    lastUpdate.current = { x: 0, z: 0 };
   }, [center]);
 
-  // 🔥 Move world instead of tiles (smooth + infinite feel)
   useFrame(() => {
     if (!planeRef.current || !groupRef.current) return;
 
-    groupRef.current.position.x = -planeRef.current.position.x * 0.5;
-    groupRef.current.position.z = -planeRef.current.position.z * 0.5;
+    const p = planeRef.current;
+
+    // move world
+    groupRef.current.position.x = -p.position.x * 0.5;
+    groupRef.current.position.z = -p.position.z * 0.5;
+
+    // 🔥 ONLY update when far (stable)
+    const threshold = tileSize * 2;
+
+    const dx = p.position.x - lastUpdate.current.x;
+    const dz = p.position.z - lastUpdate.current.z;
+
+    if (Math.abs(dx) > threshold || Math.abs(dz) > threshold) {
+      lastUpdate.current = {
+        x: p.position.x,
+        z: p.position.z,
+      };
+
+      // move tile offset logically
+      const moveX = Math.round(p.position.x / tileSize);
+      const moveZ = Math.round(p.position.z / tileSize);
+
+      const newX = tileOffset.current.x + moveX;
+      const newY = tileOffset.current.y + moveZ;
+
+      tileOffset.current = { x: newX, y: newY };
+
+      generateTiles(newX, newY);
+
+      // reset plane so numbers don't explode
+      p.position.set(0, p.position.y, 0);
+    }
   });
 
   return (
@@ -68,6 +104,44 @@ function Ground({ planeRef, center }) {
         <Tile key={i} {...tile} size={tileSize} />
       ))}
     </group>
+  );
+}
+
+// ================= COMPASS =================
+function Compass({ planeRef }) {
+  const compassRef = useRef();
+
+  useFrame(() => {
+    if (!planeRef.current || !compassRef.current) return;
+
+    const yaw = planeRef.current.rotation.y;
+    compassRef.current.style.transform = `rotate(${-yaw}rad)`;
+  });
+
+  return (
+    <div style={{
+      position: "absolute",
+      top: 20,
+      left: "50%",
+      transform: "translateX(-50%)",
+      width: 120,
+      height: 120,
+      borderRadius: "50%",
+      background: "#000000cc",
+      color: "white",
+      zIndex: 100,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontWeight: "bold"
+    }}>
+      <div ref={compassRef} style={{ position: "relative" }}>
+        N
+        <div style={{ position: "absolute", right: -40, top: 0 }}>E</div>
+        <div style={{ position: "absolute", bottom: -40, left: 0 }}>S</div>
+        <div style={{ position: "absolute", left: -40, top: 0 }}>W</div>
+      </div>
+    </div>
   );
 }
 
@@ -115,7 +189,6 @@ const Plane = React.forwardRef(({ speed, setStats }, planeRef) => {
     const p = planeRef.current;
     if (!p) return;
 
-    // movement
     if (keys.current["a"]) rotation.current.yaw += 0.01;
     if (keys.current["d"]) rotation.current.yaw -= 0.01;
     if (keys.current["w"]) rotation.current.pitch += 0.008;
@@ -133,8 +206,7 @@ const Plane = React.forwardRef(({ speed, setStats }, planeRef) => {
     velocity.current.lerp(forward, 0.05);
     p.position.add(velocity.current);
 
-    // 🔥 CAMERA FIX (OUTSIDE PLANE)
-    const camOffset = new THREE.Vector3(0, 4, 10); // BACK + UP
+    const camOffset = new THREE.Vector3(0, 4, 10);
     camOffset.applyEuler(p.rotation);
 
     camera.position.lerp(
@@ -193,7 +265,6 @@ export default function FlightSimulation() {
         lon: parseFloat(data[0].lon),
       });
 
-      // reset plane
       if (planeRef.current) {
         planeRef.current.position.set(0, 3, 0);
       }
@@ -205,6 +276,9 @@ export default function FlightSimulation() {
 
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
+
+      {/* 🧭 Compass */}
+      <Compass planeRef={planeRef} />
 
       {/* UI */}
       <div style={{
