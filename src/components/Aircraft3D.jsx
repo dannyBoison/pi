@@ -22,8 +22,8 @@ function Ground({ planeRef, center }) {
 
   const groupRef = useRef();
   const [tiles, setTiles] = useState([]);
-  const lastUpdate = useRef({ x: 0, z: 0 });
-  const tileOffset = useRef({ x: 0, y: 0 });
+
+  const lastTile = useRef({ x: 0, y: 0 });
 
   const latLonToTile = (lat, lon) => {
     const x = Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
@@ -54,48 +54,36 @@ function Ground({ planeRef, center }) {
   };
 
   useEffect(() => {
-    const { x, y } = latLonToTile(center.lat, center.lon);
-    tileOffset.current = { x, y };
-    generateTiles(x, y);
-    lastUpdate.current = { x: 0, z: 0 };
+    const base = latLonToTile(center.lat, center.lon);
+    lastTile.current = base;
+    generateTiles(base.x, base.y);
   }, [center]);
 
   useFrame(() => {
-  if (!planeRef.current || !groupRef.current) return;
+    if (!planeRef.current || !groupRef.current) return;
 
-  const p = planeRef.current;
+    const p = planeRef.current;
 
-  // move world
-  groupRef.current.position.x = -p.position.x * 0.5;
-  groupRef.current.position.z = -p.position.z * 0.5;
+    // move world
+    groupRef.current.position.x = -p.position.x * 0.5;
+    groupRef.current.position.z = -p.position.z * 0.5;
 
-  const threshold = tileSize;
-
-  const dx = p.position.x - lastUpdate.current.x;
-  const dz = p.position.z - lastUpdate.current.z;
-
-  if (Math.abs(dx) > threshold || Math.abs(dz) > threshold) {
-    lastUpdate.current = {
-      x: p.position.x,
-      z: p.position.z,
-    };
-
-    // ✅ FIX: use floor instead of round (accurate movement)
+    // 🔥 REAL FIX: track tile movement WITHOUT resetting plane
     const moveX = Math.floor(p.position.x / tileSize);
     const moveZ = Math.floor(p.position.z / tileSize);
 
-    // ✅ FIX: calculate from ORIGINAL center (not accumulated drift)
     const base = latLonToTile(center.lat, center.lon);
 
     const newX = base.x + moveX;
     const newY = base.y + moveZ;
 
-    generateTiles(newX, newY);
+    // only update when tile changes
+    if (newX !== lastTile.current.x || newY !== lastTile.current.y) {
+      lastTile.current = { x: newX, y: newY };
+      generateTiles(newX, newY);
+    }
+  });
 
-    // reset plane (important for stability)
-    p.position.set(0, p.position.y, 0);
-  }
-});
   return (
     <group ref={groupRef}>
       {tiles.map((tile, i) => (
