@@ -18,7 +18,7 @@ function Tile({ url, position, size }) {
 // ================= GROUND =================
 function Ground({ planeRef, center }) {
   const zoom = 14;
-  const tileSize = 120;
+  const tileSize = 140;
 
   const groupRef = useRef();
   const [tiles, setTiles] = useState([]);
