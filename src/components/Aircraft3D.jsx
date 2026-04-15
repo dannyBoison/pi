@@ -42,6 +42,12 @@ function Tile({ url, position, size }) {
 function MiniMap({ planeRef, heading }) {
   const size = 170;
 
+  const zoom = 14;
+  const maxTile = 1 << zoom;
+
+  const tileSize = 256; // OSM standard tile size
+  const scale = 0.04;
+
   const [center, setCenter] = useState({ x: 0, z: 0 });
 
   useEffect(() => {
@@ -62,19 +68,25 @@ function MiniMap({ planeRef, heading }) {
     return () => cancelAnimationFrame(frame);
   }, [planeRef]);
 
-  const zoom = 14;
-  const tileSize = 120;
-  const scale = 0.04;
+  // 🧠 FIX: convert world → SAFE tile index space
+  const worldToTile = (value) => {
+    const t = Math.floor(value / 500) + maxTile / 2; 
+    return ((t % maxTile) + maxTile) % maxTile;
+  };
 
-  const baseX = Math.floor(center.x / tileSize);
-  const baseZ = Math.floor(center.z / tileSize);
+  const baseX = worldToTile(center.x);
+  const baseZ = worldToTile(center.z);
 
   const tiles = [];
 
   for (let x = -2; x <= 2; x++) {
     for (let z = -2; z <= 2; z++) {
-      const tx = baseX + x;
-      const tz = baseZ + z;
+      let tx = baseX + x;
+      let tz = baseZ + z;
+
+      // 🔥 clamp into valid OSM range
+      tx = (tx + maxTile) % maxTile;
+      tz = (tz + maxTile) % maxTile;
 
       tiles.push(
         <img
@@ -87,7 +99,7 @@ function MiniMap({ planeRef, heading }) {
             left: "50%",
             top: "50%",
             transform: `translate(${x * 22}px, ${z * 22}px)`,
-            opacity: 0.85,
+            opacity: 0.9,
             filter: "brightness(0.7) contrast(1.2)",
           }}
         />
@@ -135,7 +147,6 @@ function MiniMap({ planeRef, heading }) {
           background: "#00ff7b",
           borderRadius: "50%",
           boxShadow: "0 0 10px #00ff7b",
-          zIndex: 10,
         }}
       />
 
@@ -151,18 +162,6 @@ function MiniMap({ planeRef, heading }) {
           borderLeft: "6px solid transparent",
           borderRight: "6px solid transparent",
           borderBottom: "14px solid white",
-          zIndex: 10,
-        }}
-      />
-
-      {/* glow */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          borderRadius: "50%",
-          boxShadow: "inset 0 0 25px rgba(0,255,120,0.2)",
-          pointerEvents: "none",
         }}
       />
     </div>
