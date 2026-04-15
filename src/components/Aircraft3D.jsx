@@ -15,15 +15,67 @@ function Tile({ url, position, size }) {
   );
 }
 
-// ================= GROUND =================
+// ================= MINIMAP =================
+function MiniMap({ plane, heading }) {
+  return (
+    <div style={{
+      position: "absolute",
+      bottom: 20,
+      left: 20,
+      width: 160,
+      height: 160,
+      background: "#000000cc",
+      borderRadius: 10,
+      zIndex: 200,
+      overflow: "hidden"
+    }}>
+      <div style={{
+        position: "absolute",
+        width: "100%",
+        height: "100%",
+        transform: `rotate(${-heading}rad)`,
+        transition: "transform 0.1s linear"
+      }}>
+        {/* grid */}
+        <div style={{
+          position: "absolute",
+          width: "100%",
+          height: "100%",
+          display: "grid",
+          gridTemplateColumns: "repeat(5, 1fr)",
+          gridTemplateRows: "repeat(5, 1fr)",
+          opacity: 0.3
+        }}>
+          {Array.from({ length: 25 }).map((_, i) => (
+            <div key={i} style={{ border: "1px solid white" }} />
+          ))}
+        </div>
+
+        {/* plane dot */}
+        <div style={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          width: 10,
+          height: 10,
+          background: "red",
+          borderRadius: "50%",
+          transform: "translate(-50%, -50%)"
+        }} />
+      </div>
+    </div>
+  );
+}
+
+// ================= GROUND (INFINITE WORLD) =================
 function Ground({ planeRef, center }) {
   const zoom = 14;
   const tileSize = 120;
 
   const groupRef = useRef();
-  const [tiles, setTiles] = useState([]);
-  const lastUpdate = useRef({ x: 0, z: 0 });
-  const tileOffset = useRef({ x: 0, y: 0 });
+
+  const tilesRef = useRef(new Map()); // key = "x_z"
+  const lastCenter = useRef({ x: 0, y: 0 });
 
   const latLonToTile = (lat, lon) => {
     const x = Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
@@ -40,63 +92,65 @@ function Ground({ planeRef, center }) {
     return { x, y };
   };
 
-  const generateTiles = (baseX, baseY) => {
-    const grid = [];
-    for (let i = -4; i <= 4; i++) {
-      for (let j = -4; j <= 4; j++) {
-        grid.push({
-          url: `https://tile.openstreetmap.org/${zoom}/${baseX + i}/${baseY + j}.png`,
-          position: [i * tileSize, 0, j * tileSize],
-        });
+  const createTile = (x, y) => {
+    const key = `${x}_${y}`;
+    if (tilesRef.current.has(key)) return;
+
+    tilesRef.current.set(key, {
+      url: `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`,
+      position: [(x - lastCenter.current.x) * tileSize, 0, (y - lastCenter.current.y) * tileSize],
+      key
+    });
+  };
+
+  const updateTiles = (baseX, baseY, forwardX = 0, forwardY = 0) => {
+    const range = 7; // BIGGER WORLD
+
+    for (let i = -range; i <= range; i++) {
+      for (let j = -range; j <= range; j++) {
+        const fx = Math.round(forwardX * 3);
+        const fy = Math.round(forwardY * 3);
+
+        createTile(baseX + i + fx, baseY + j + fy);
       }
     }
-    setTiles(grid);
+
+    // cleanup far tiles
+    for (let key of tilesRef.current.keys()) {
+      const [x, y] = key.split("_").map(Number);
+      if (
+        Math.abs(x - baseX) > range + 3 ||
+        Math.abs(y - baseY) > range + 3
+      ) {
+        tilesRef.current.delete(key);
+      }
+    }
   };
 
   useEffect(() => {
     const { x, y } = latLonToTile(center.lat, center.lon);
-    tileOffset.current = { x, y };
-    generateTiles(x, y);
-    lastUpdate.current = { x: 0, z: 0 };
+    lastCenter.current = { x, y };
+    updateTiles(x, y);
   }, [center]);
 
   useFrame(() => {
-    if (!planeRef.current || !groupRef.current) return;
+    if (!planeRef.current) return;
 
     const p = planeRef.current;
 
-    groupRef.current.position.x = -p.position.x * 0.5;
-    groupRef.current.position.z = -p.position.z * 0.5;
+    const forward = new THREE.Vector3(0, 0, -1).applyEuler(p.rotation);
+    const fx = forward.x;
+    const fy = forward.z;
 
-    const threshold = tileSize * 2;
+    const centerTile = latLonToTile(center.lat, center.lon);
 
-    const dx = p.position.x - lastUpdate.current.x;
-    const dz = p.position.z - lastUpdate.current.z;
-
-    if (Math.abs(dx) > threshold || Math.abs(dz) > threshold) {
-      lastUpdate.current = {
-        x: p.position.x,
-        z: p.position.z,
-      };
-
-      const moveX = Math.round(p.position.x / tileSize);
-      const moveZ = Math.round(p.position.z / tileSize);
-
-      const newX = tileOffset.current.x + moveX;
-      const newY = tileOffset.current.y + moveZ;
-
-      tileOffset.current = { x: newX, y: newY };
-
-      generateTiles(newX, newY);
-
-      p.position.set(0, p.position.y, 0);
-    }
+    updateTiles(centerTile.x, centerTile.y, fx, fy);
   });
 
   return (
     <group ref={groupRef}>
-      {tiles.map((tile, i) => (
-        <Tile key={i} {...tile} size={tileSize} />
+      {Array.from(tilesRef.current.values()).map((tile) => (
+        <Tile key={tile.key} {...tile} size={tileSize} />
       ))}
     </group>
   );
@@ -118,18 +172,15 @@ function Compass({ heading }) {
       zIndex: 100,
       display: "flex",
       alignItems: "center",
-      justifyContent: "center",
-      fontWeight: "bold"
+      justifyContent: "center"
     }}>
       <div style={{
-        position: "relative",
-        transform: `rotate(${-heading}rad)`,
-        transition: "transform 0.1s linear"
+        transform: `rotate(${-heading}rad)`
       }}>
         N
-        <div style={{ position: "absolute", right: -40, top: 0 }}>E</div>
-        <div style={{ position: "absolute", bottom: -40, left: 0 }}>S</div>
-        <div style={{ position: "absolute", left: -40, top: 0 }}>W</div>
+        <div style={{ position: "absolute", right: -40 }}>E</div>
+        <div style={{ position: "absolute", bottom: -40 }}>S</div>
+        <div style={{ position: "absolute", left: -40 }}>W</div>
       </div>
     </div>
   );
@@ -147,20 +198,8 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
   }
 
   const velocity = useRef(new THREE.Vector3(0, 0, -speed));
-  const rotation = useRef({ pitch: 0, yaw: 0, roll: 0 });
+  const rot = useRef({ pitch: 0, yaw: 0, roll: 0 });
   const keys = useRef({});
-
-  useEffect(() => {
-    if (model) {
-      const box = new THREE.Box3().setFromObject(model);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-
-      const scale = 2 / Math.max(size.x, size.y, size.z);
-      model.scale.set(scale, scale, scale);
-      model.rotation.y = Math.PI;
-    }
-  }, [model]);
 
   useEffect(() => {
     const down = (e) => (keys.current[e.key.toLowerCase()] = true);
@@ -179,16 +218,12 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
     const p = planeRef.current;
     if (!p) return;
 
-    if (keys.current["a"]) rotation.current.yaw += 0.01;
-    if (keys.current["d"]) rotation.current.yaw -= 0.01;
-    if (keys.current["w"]) rotation.current.pitch += 0.008;
-    if (keys.current["s"]) rotation.current.pitch -= 0.008;
+    if (keys.current["a"]) rot.current.yaw += 0.01;
+    if (keys.current["d"]) rot.current.yaw -= 0.01;
+    if (keys.current["w"]) rot.current.pitch += 0.008;
+    if (keys.current["s"]) rot.current.pitch -= 0.008;
 
-    p.rotation.set(
-      rotation.current.pitch,
-      rotation.current.yaw,
-      rotation.current.roll
-    );
+    p.rotation.set(rot.current.pitch, rot.current.yaw, 0);
 
     const forward = new THREE.Vector3(0, 0, -1).applyEuler(p.rotation);
     forward.multiplyScalar(speed);
@@ -196,18 +231,12 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
     velocity.current.lerp(forward, 0.05);
     p.position.add(velocity.current);
 
-    // ✅ send heading to compass
-    setHeading(rotation.current.yaw);
+    setHeading(rot.current.yaw);
 
-    const camOffset = new THREE.Vector3(0, 4, 10);
-    camOffset.applyEuler(p.rotation);
+    const camOffset = new THREE.Vector3(0, 4, 10).applyEuler(p.rotation);
 
-    camera.position.lerp(
-      p.position.clone().add(camOffset),
-      0.08
-    );
-
-    camera.lookAt(p.position.clone().add(new THREE.Vector3(0, 1, 0)));
+    camera.position.lerp(p.position.clone().add(camOffset), 0.08);
+    camera.lookAt(p.position);
 
     setStats({
       speed: speed.toFixed(2),
@@ -236,45 +265,34 @@ export default function FlightSimulation() {
   const planeRef = useRef();
 
   const [city, setCity] = useState("");
-  const [center, setCenter] = useState({
-    lat: 5.6037,
-    lon: -0.1870,
-  });
+  const [center, setCenter] = useState({ lat: 5.6037, lon: -0.1870 });
 
   const handleSearch = async (e) => {
     e.preventDefault();
-
     if (!city) return;
 
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${city}`
-      );
-      const data = await res.json();
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${city}`
+    );
+    const data = await res.json();
 
-      if (!data.length) return alert("City not found");
+    if (!data.length) return alert("City not found");
 
-      setCenter({
-        lat: parseFloat(data[0].lat),
-        lon: parseFloat(data[0].lon),
-      });
+    setCenter({
+      lat: parseFloat(data[0].lat),
+      lon: parseFloat(data[0].lon),
+    });
 
-      if (planeRef.current) {
-        planeRef.current.position.set(0, 3, 0);
-      }
-
-    } catch {
-      alert("Search failed");
+    if (planeRef.current) {
+      planeRef.current.position.set(0, 3, 0);
     }
   };
 
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
-
-      {/* 🧭 Compass */}
       <Compass heading={heading} />
+      <MiniMap plane={planeRef} heading={heading} />
 
-      {/* UI */}
       <div style={{
         position: "absolute",
         top: 20,
@@ -289,10 +307,10 @@ export default function FlightSimulation() {
           <input
             value={city}
             onChange={(e) => setCity(e.target.value)}
-            placeholder="Search city (Accra, Kumasi, London)"
-            style={{ padding: 8, marginRight: 5 }}
+            placeholder="Search city"
+            style={{ padding: 8 }}
           />
-          <button type="submit">Search</button>
+          <button>Search</button>
         </form>
 
         <p>Speed: {stats.speed}</p>
@@ -303,18 +321,12 @@ export default function FlightSimulation() {
         <color attach="background" args={["#87CEEB"]} />
         <ambientLight intensity={0.6} />
         <directionalLight position={[100, 100, 50]} intensity={2} />
-
         <Sky sunPosition={[100, 20, 100]} />
 
         <Ground planeRef={planeRef} center={center} />
 
         <Suspense fallback={null}>
-          <Plane
-            speed={0.12}
-            setStats={setStats}
-            setHeading={setHeading}
-            ref={planeRef}
-          />
+          <Plane speed={0.12} setStats={setStats} setHeading={setHeading} ref={planeRef} />
         </Suspense>
       </Canvas>
     </div>
