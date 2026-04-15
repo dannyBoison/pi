@@ -25,6 +25,8 @@ function Ground({ planeRef, center }) {
 
   const lastTile = useRef({ x: 0, y: 0 });
 
+  const GRID_SIZE = 6; // 🔥 bigger grid (was 4 → now 6 => 13x13)
+
   const latLonToTile = (lat, lon) => {
     const x = Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
     const y = Math.floor(
@@ -42,14 +44,17 @@ function Ground({ planeRef, center }) {
 
   const generateTiles = (baseX, baseY) => {
     const grid = [];
-    for (let i = -4; i <= 4; i++) {
-      for (let j = -4; j <= 4; j++) {
+
+    for (let i = -GRID_SIZE; i <= GRID_SIZE; i++) {
+      for (let j = -GRID_SIZE; j <= GRID_SIZE; j++) {
         grid.push({
+          key: `${baseX + i}-${baseY + j}`,
           url: `https://tile.openstreetmap.org/${zoom}/${baseX + i}/${baseY + j}.png`,
           position: [i * tileSize, 0, j * tileSize],
         });
       }
     }
+
     setTiles(grid);
   };
 
@@ -64,11 +69,11 @@ function Ground({ planeRef, center }) {
 
     const p = planeRef.current;
 
-    // move world
+    // ✅ Smooth world movement
     groupRef.current.position.x = -p.position.x * 0.5;
     groupRef.current.position.z = -p.position.z * 0.5;
 
-    // 🔥 REAL FIX: track tile movement WITHOUT resetting plane
+    // 🔥 detect tile movement
     const moveX = Math.floor(p.position.x / tileSize);
     const moveZ = Math.floor(p.position.z / tileSize);
 
@@ -77,22 +82,28 @@ function Ground({ planeRef, center }) {
     const newX = base.x + moveX;
     const newY = base.y + moveZ;
 
-    // only update when tile changes
-    if (newX !== lastTile.current.x || newY !== lastTile.current.y) {
+    // ✅ Only update when truly entering new tile
+    if (
+      Math.abs(newX - lastTile.current.x) >= 1 ||
+      Math.abs(newY - lastTile.current.y) >= 1
+    ) {
       lastTile.current = { x: newX, y: newY };
-      generateTiles(newX, newY);
+
+      // 🔥 smooth update (no flicker)
+      requestAnimationFrame(() => {
+        generateTiles(newX, newY);
+      });
     }
   });
 
   return (
     <group ref={groupRef}>
-      {tiles.map((tile, i) => (
-        <Tile key={i} {...tile} size={tileSize} />
+      {tiles.map((tile) => (
+        <Tile key={tile.key} {...tile} size={tileSize} />
       ))}
     </group>
   );
 }
-
 // ================= COMPASS =================
 function Compass({ heading }) {
   return (
