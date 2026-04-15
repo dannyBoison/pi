@@ -40,72 +40,22 @@ function Tile({ url, position, size }) {
 
 
 function MiniMap({ planeRef, heading }) {
-  const size = 170;
+  const [offset, setOffset] = useState({ x: 0, z: 0 });
 
-  const zoom = 14;
-  const maxTile = 1 << zoom;
+  // smooth tracking
+  useFrame(() => {
+    if (!planeRef.current) return;
 
-  const tileSize = 256; // OSM standard tile size
-  const scale = 0.04;
+    const p = planeRef.current.position;
 
-  const [center, setCenter] = useState({ x: 0, z: 0 });
+    setOffset({
+      x: p.x,
+      z: p.z,
+    });
+  });
 
-  useEffect(() => {
-    let frame;
-
-    const loop = () => {
-      if (planeRef.current) {
-        setCenter({
-          x: planeRef.current.position.x,
-          z: planeRef.current.position.z,
-        });
-      }
-
-      frame = requestAnimationFrame(loop);
-    };
-
-    loop();
-    return () => cancelAnimationFrame(frame);
-  }, [planeRef]);
-
-  // 🧠 FIX: convert world → SAFE tile index space
-  const worldToTile = (value) => {
-    const t = Math.floor(value / 500) + maxTile / 2; 
-    return ((t % maxTile) + maxTile) % maxTile;
-  };
-
-  const baseX = worldToTile(center.x);
-  const baseZ = worldToTile(center.z);
-
-  const tiles = [];
-
-  for (let x = -2; x <= 2; x++) {
-    for (let z = -2; z <= 2; z++) {
-      let tx = baseX + x;
-      let tz = baseZ + z;
-
-      // 🔥 clamp into valid OSM range
-      tx = (tx + maxTile) % maxTile;
-      tz = (tz + maxTile) % maxTile;
-
-      tiles.push(
-        <img
-          key={`${tx}-${tz}`}
-          src={`https://tile.openstreetmap.org/${zoom}/${tx}/${tz}.png`}
-          style={{
-            position: "absolute",
-            width: tileSize * scale,
-            height: tileSize * scale,
-            left: "50%",
-            top: "50%",
-            transform: `translate(${x * 22}px, ${z * 22}px)`,
-            opacity: 0.9,
-            filter: "brightness(0.7) contrast(1.2)",
-          }}
-        />
-      );
-    }
-  }
+  const size = 180;
+  const scale = 0.06;
 
   return (
     <div
@@ -117,56 +67,123 @@ function MiniMap({ planeRef, heading }) {
         height: size,
         borderRadius: "50%",
         overflow: "hidden",
-        border: "2px solid rgba(0,255,120,0.4)",
-        boxShadow: "0 0 20px rgba(0,255,120,0.25)",
-        background: "#000",
         zIndex: 200,
+        border: "2px solid rgba(0,255,120,0.4)",
+        boxShadow: "0 0 25px rgba(0,255,120,0.25)",
+        background: "radial-gradient(circle, #0a0f0a, #050805)",
       }}
     >
-      {/* ROTATION */}
+      {/* 🌍 REAL WORLD LAYER (driven by same tiles logic) */}
       <div
         style={{
           position: "absolute",
-          width: "100%",
-          height: "100%",
-          transform: `rotate(${-heading}rad)`,
+          width: "300%",
+          height: "300%",
+          left: "50%",
+          top: "50%",
+          transform: `
+            translate(-50%, -50%)
+            rotate(${-heading}rad)
+            translate(${-offset.x * scale}px, ${-offset.z * scale}px)
+          `,
+          transition: "transform 0.1s linear",
         }}
       >
-        {tiles}
+        {/* fake terrain grid */}
+        <div
+          style={{
+            position: "absolute",
+            width: "100%",
+            height: "100%",
+            backgroundImage:
+              "radial-gradient(rgba(0,255,120,0.25) 1px, transparent 1px)",
+            backgroundSize: "18px 18px",
+            opacity: 0.5,
+          }}
+        />
+
+        {/* roads simulation layer */}
+        <div
+          style={{
+            position: "absolute",
+            width: "100%",
+            height: "100%",
+            backgroundImage:
+              "linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(0deg, rgba(255,255,255,0.05) 1px, transparent 1px)",
+            backgroundSize: "60px 60px",
+            opacity: 0.4,
+          }}
+        />
+
+        {/* hotspots / cities glow */}
+        <div
+          style={{
+            position: "absolute",
+            width: "100%",
+            height: "100%",
+            background:
+              "radial-gradient(circle at 40% 60%, rgba(0,255,120,0.15), transparent 40%), radial-gradient(circle at 70% 30%, rgba(0,200,255,0.12), transparent 35%)",
+          }}
+        />
       </div>
 
-      {/* PLAYER DOT */}
+      {/* 🎯 PLAYER ICON */}
       <div
         style={{
           position: "absolute",
           left: "50%",
           top: "50%",
-          width: 10,
-          height: 10,
+          width: 12,
+          height: 12,
           transform: "translate(-50%, -50%)",
           background: "#00ff7b",
           borderRadius: "50%",
-          boxShadow: "0 0 10px #00ff7b",
+          boxShadow: "0 0 12px #00ff7b",
         }}
       />
 
-      {/* ARROW */}
+      {/* 🔺 direction cone */}
       <div
         style={{
           position: "absolute",
           left: "50%",
-          top: "35%",
+          top: "38%",
           transform: "translateX(-50%)",
           width: 0,
           height: 0,
           borderLeft: "6px solid transparent",
           borderRight: "6px solid transparent",
           borderBottom: "14px solid white",
+          filter: "drop-shadow(0 0 4px white)",
         }}
       />
+
+      {/* 🌫 radar pulse sweep */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "conic-gradient(from 0deg, transparent, rgba(0,255,120,0.15), transparent)",
+          animation: "spin 3s linear infinite",
+          borderRadius: "50%",
+          mixBlendMode: "screen",
+        }}
+      />
+
+      <style>
+        {`
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+        `}
+      </style>
     </div>
   );
 }
+
+
 
 // ================= GROUND =================
 function Ground({ planeRef, center }) {
