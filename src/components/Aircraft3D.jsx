@@ -21,9 +21,8 @@ function Ground({ planeRef, center }) {
   const tileSize = 120;
 
   const groupRef = useRef();
+  const tilesRef = useRef(new Map()); // store tiles
   const [tiles, setTiles] = useState([]);
-  const lastUpdate = useRef({ x: 0, z: 0 });
-  const tileOffset = useRef({ x: 0, y: 0 });
 
   const latLonToTile = (lat, lon) => {
     const x = Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
@@ -40,68 +39,84 @@ function Ground({ planeRef, center }) {
     return { x, y };
   };
 
-  const generateTiles = (baseX, baseY) => {
-    const grid = [];
-    for (let i = -4; i <= 4; i++) {
-      for (let j = -4; j <= 4; j++) {
-        grid.push({
-          url: `https://tile.openstreetmap.org/${zoom}/${baseX + i}/${baseY + j}.png`,
-          position: [i * tileSize, 0, j * tileSize],
-        });
-      }
-    }
-    setTiles(grid);
+  const addTile = (x, y, baseX, baseY) => {
+    const key = `${x},${y}`;
+    if (tilesRef.current.has(key)) return;
+
+    const worldX = (x - baseX) * tileSize;
+    const worldZ = (y - baseY) * tileSize;
+
+    const tile = {
+      key,
+      url: `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`,
+      position: [worldX, 0, worldZ],
+      x,
+      y
+    };
+
+    tilesRef.current.set(key, tile);
   };
 
+  const removeFarTiles = (planeX, planeZ, baseX, baseY) => {
+    const maxDistance = tileSize * 10;
+
+    tilesRef.current.forEach((tile, key) => {
+      const dx = tile.position[0] - planeX;
+      const dz = tile.position[2] - planeZ;
+
+      if (Math.abs(dx) > maxDistance || Math.abs(dz) > maxDistance) {
+        tilesRef.current.delete(key);
+      }
+    });
+  };
+
+  const updateTiles = (planePos, baseTile) => {
+    const range = 6; // bigger = smoother loading
+
+    for (let i = -range; i <= range; i++) {
+      for (let j = -range; j <= range; j++) {
+        addTile(baseTile.x + i, baseTile.y + j, baseTile.x, baseTile.y);
+      }
+    }
+
+    removeFarTiles(planePos.x, planePos.z, baseTile.x, baseTile.y);
+
+    setTiles(Array.from(tilesRef.current.values()));
+  };
+
+  const baseTileRef = useRef({ x: 0, y: 0 });
+
   useEffect(() => {
-    const { x, y } = latLonToTile(center.lat, center.lon);
-    tileOffset.current = { x, y };
-    generateTiles(x, y);
-    lastUpdate.current = { x: 0, z: 0 };
+    const t = latLonToTile(center.lat, center.lon);
+    baseTileRef.current = t;
+    tilesRef.current.clear();
   }, [center]);
 
   useFrame(() => {
     if (!planeRef.current || !groupRef.current) return;
 
-    const p = planeRef.current;
+    const p = planeRef.current.position;
 
-    groupRef.current.position.x = -p.position.x * 0.5;
-    groupRef.current.position.z = -p.position.z * 0.5;
+    // Convert plane world position to tile movement
+    const moveX = Math.floor(p.x / tileSize);
+    const moveZ = Math.floor(p.z / tileSize);
 
-    const threshold = tileSize * 2;
+    const baseTile = {
+      x: baseTileRef.current.x + moveX,
+      y: baseTileRef.current.y + moveZ
+    };
 
-    const dx = p.position.x - lastUpdate.current.x;
-    const dz = p.position.z - lastUpdate.current.z;
-
-    if (Math.abs(dx) > threshold || Math.abs(dz) > threshold) {
-      lastUpdate.current = {
-        x: p.position.x,
-        z: p.position.z,
-      };
-
-      const moveX = Math.round(p.position.x / tileSize);
-      const moveZ = Math.round(p.position.z / tileSize);
-
-      const newX = tileOffset.current.x + moveX;
-      const newY = tileOffset.current.y + moveZ;
-
-      tileOffset.current = { x: newX, y: newY };
-
-      generateTiles(newX, newY);
-
-      p.position.set(0, p.position.y, 0);
-    }
+    updateTiles(p, baseTile);
   });
 
   return (
     <group ref={groupRef}>
-      {tiles.map((tile, i) => (
-        <Tile key={i} {...tile} size={tileSize} />
+      {tiles.map((tile) => (
+        <Tile key={tile.key} {...tile} size={tileSize} />
       ))}
     </group>
   );
 }
-
 // ================= COMPASS =================
 function Compass({ heading }) {
   return (
