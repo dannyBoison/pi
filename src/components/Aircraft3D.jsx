@@ -15,7 +15,7 @@ function Tile({ url, position, size }) {
   );
 }
 
-// ================= GROUND (FIXED SMOOTH LOADING) =================
+// ================= GROUND =================
 function Ground({ planeRef, center }) {
   const zoom = 14;
   const tileSize = 120;
@@ -25,8 +25,7 @@ function Ground({ planeRef, center }) {
 
   const lastTile = useRef({ x: 0, y: 0 });
 
-  // 🔥 NEW: preload radius (THIS IS THE KEY FIX)
-  const LOAD_RADIUS = 7; // bigger = smoother, more memory usage
+  const LOAD_RADIUS = 7;
 
   const latLonToTile = (lat, lon) => {
     const x = Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
@@ -34,9 +33,9 @@ function Ground({ planeRef, center }) {
       ((1 -
         Math.log(
           Math.tan((lat * Math.PI) / 180) +
-          1 / Math.cos((lat * Math.PI) / 180)
+            1 / Math.cos((lat * Math.PI) / 180)
         ) /
-        Math.PI) /
+          Math.PI) /
         2) *
         Math.pow(2, zoom)
     );
@@ -46,7 +45,6 @@ function Ground({ planeRef, center }) {
   const generateTiles = (baseX, baseY) => {
     const grid = [];
 
-    // 🔥 expanded grid = no visible edges
     for (let i = -LOAD_RADIUS; i <= LOAD_RADIUS; i++) {
       for (let j = -LOAD_RADIUS; j <= LOAD_RADIUS; j++) {
         grid.push({
@@ -82,17 +80,9 @@ function Ground({ planeRef, center }) {
     const newX = base.x + moveX;
     const newY = base.y + moveZ;
 
-    // 🔥 NEW FIX: preload BEFORE reaching edge
-    const dx = Math.abs(newX - lastTile.current.x);
-    const dy = Math.abs(newY - lastTile.current.y);
-
-    // instead of waiting for 1 tile change, we preload early
-    const PRELOAD_TRIGGER = 1;
-
-    if (dx >= PRELOAD_TRIGGER || dy >= PRELOAD_TRIGGER) {
+    if (Math.abs(newX - lastTile.current.x) >= 1 || Math.abs(newY - lastTile.current.y) >= 1) {
       lastTile.current = { x: newX, y: newY };
 
-      // smooth update (no freeze)
       requestAnimationFrame(() => {
         generateTiles(newX, newY);
       });
@@ -129,20 +119,45 @@ function Compass({ heading }) {
     }}>
       <div style={{
         position: "relative",
-        transform: `rotate(${-heading}rad)`,
-        transition: "transform 0.1s linear"
+        transform: `rotate(${-heading}rad)`
       }}>
         N
-        <div style={{ position: "absolute", right: -40, top: 0 }}>E</div>
-        <div style={{ position: "absolute", bottom: -40, left: 0 }}>S</div>
-        <div style={{ position: "absolute", left: -40, top: 0 }}>W</div>
+        <div style={{ position: "absolute", right: -40 }}>E</div>
+        <div style={{ position: "absolute", bottom: -40 }}>S</div>
+        <div style={{ position: "absolute", left: -40 }}>W</div>
       </div>
     </div>
   );
 }
 
+// ================= MINI MAP =================
+function MiniMap({ lat, lon }) {
+  return (
+    <div style={{
+      position: "absolute",
+      bottom: 20,
+      right: 20,
+      width: 180,
+      height: 180,
+      background: "#111",
+      border: "2px solid white",
+      borderRadius: 10,
+      overflow: "hidden",
+      zIndex: 100
+    }}>
+      <iframe
+        title="mini-map"
+        width="100%"
+        height="100%"
+        style={{ border: 0 }}
+        src={`https://www.openstreetmap.org/export/embed.html?bbox=${lon-0.05},${lat-0.05},${lon+0.05},${lat+0.05}&layer=mapnik`}
+      />
+    </div>
+  );
+}
+
 // ================= PLANE =================
-const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
+const Plane = React.forwardRef(({ speed, setStats, setHeading, setGPS }, planeRef) => {
   const { camera } = useThree();
 
   let model;
@@ -156,17 +171,9 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
   const rotation = useRef({ pitch: 0, yaw: 0, roll: 0 });
   const keys = useRef({});
 
-  useEffect(() => {
-    if (model) {
-      const box = new THREE.Box3().setFromObject(model);
-      const size = new THREE.Vector3();
-      box.getSize(size);
+  const gps = useRef({ lat: 5.6037, lon: -0.1870 });
 
-      const scale = 2 / Math.max(size.x, size.y, size.z);
-      model.scale.set(scale, scale, scale);
-      model.rotation.y = Math.PI;
-    }
-  }, [model]);
+  const metersToDeg = 0.00002;
 
   useEffect(() => {
     const down = (e) => (keys.current[e.key.toLowerCase()] = true);
@@ -202,15 +209,18 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
     velocity.current.lerp(forward, 0.05);
     p.position.add(velocity.current);
 
+    // ================= GPS SIMULATION =================
+    gps.current.lat += forward.z * metersToDeg;
+    gps.current.lon += forward.x * metersToDeg;
+
+    setGPS({ ...gps.current });
+
     setHeading(rotation.current.yaw);
 
     const camOffset = new THREE.Vector3(0, 4, 10);
     camOffset.applyEuler(p.rotation);
 
-    camera.position.lerp(
-      p.position.clone().add(camOffset),
-      0.08
-    );
+    camera.position.lerp(p.position.clone().add(camOffset), 0.08);
 
     camera.lookAt(p.position.clone().add(new THREE.Vector3(0, 1, 0)));
 
@@ -238,6 +248,8 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
 export default function FlightSimulation() {
   const [stats, setStats] = useState({ speed: 0, altitude: 0 });
   const [heading, setHeading] = useState(0);
+  const [gps, setGPS] = useState({ lat: 5.6037, lon: -0.1870 });
+
   const planeRef = useRef();
 
   const [city, setCity] = useState("");
@@ -246,37 +258,72 @@ export default function FlightSimulation() {
     lon: -0.1870,
   });
 
+  // ================= AUTO CITY DETECTION =================
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${gps.lat}&lon=${gps.lon}`
+        );
+        const data = await res.json();
+
+        if (data?.address?.city || data?.address?.town) {
+          setCity(data.address.city || data.address.town);
+        }
+      } catch {}
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [gps]);
+
   const handleSearch = async (e) => {
     e.preventDefault();
 
     if (!city) return;
 
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${city}`
-      );
-      const data = await res.json();
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${city}`
+    );
+    const data = await res.json();
 
-      if (!data.length) return alert("City not found");
+    if (!data.length) return;
 
-      setCenter({
-        lat: parseFloat(data[0].lat),
-        lon: parseFloat(data[0].lon),
-      });
+    setCenter({
+      lat: parseFloat(data[0].lat),
+      lon: parseFloat(data[0].lon),
+    });
 
-      if (planeRef.current) {
-        planeRef.current.position.set(0, 3, 0);
-      }
-
-    } catch {
-      alert("Search failed");
+    if (planeRef.current) {
+      planeRef.current.position.set(0, 3, 0);
     }
   };
 
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
+
+      {/* 🧭 COMPASS */}
       <Compass heading={heading} />
 
+      {/* 📍 LIVE GPS */}
+      <div style={{
+        position: "absolute",
+        top: 20,
+        right: 20,
+        zIndex: 100,
+        background: "#000000cc",
+        padding: 10,
+        borderRadius: 10,
+        color: "white"
+      }}>
+        <p>📍 Lat: {gps.lat.toFixed(5)}</p>
+        <p>📍 Lon: {gps.lon.toFixed(5)}</p>
+        <p>🏙️ {city}</p>
+      </div>
+
+      {/* 🗺️ MINI MAP */}
+      <MiniMap lat={gps.lat} lon={gps.lon} />
+
+      {/* UI */}
       <div style={{
         position: "absolute",
         top: 20,
@@ -294,7 +341,7 @@ export default function FlightSimulation() {
             placeholder="Search city"
             style={{ padding: 8, marginRight: 5 }}
           />
-          <button type="submit">Search</button>
+          <button>Search</button>
         </form>
 
         <p>Speed: {stats.speed}</p>
@@ -314,6 +361,7 @@ export default function FlightSimulation() {
             speed={0.12}
             setStats={setStats}
             setHeading={setHeading}
+            setGPS={setGPS}
             ref={planeRef}
           />
         </Suspense>
