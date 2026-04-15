@@ -64,11 +64,10 @@ function MiniMap({ heading }) {
   );
 }
 
-// ================= GROUND (FIXED INFINITE WORLD) =================
-function Ground({ planeRef, center }) {
+// ================= GROUND =================
+function Ground({ center }) {
   const zoom = 14;
   const tileSize = 120;
-
   const tilesRef = useRef(new Map());
 
   const latLonToTile = (lat, lon) => {
@@ -96,22 +95,11 @@ function Ground({ planeRef, center }) {
   };
 
   const updateTiles = (baseX, baseY) => {
-    const range = 8; // bigger world
+    const range = 8;
 
     for (let i = -range; i <= range; i++) {
       for (let j = -range; j <= range; j++) {
         createTile(baseX + i, baseY + j, baseX, baseY);
-      }
-    }
-
-    // cleanup far tiles
-    for (let key of tilesRef.current.keys()) {
-      const [x, y] = key.split("_").map(Number);
-      if (
-        Math.abs(x - baseX) > range + 2 ||
-        Math.abs(y - baseY) > range + 2
-      ) {
-        tilesRef.current.delete(key);
       }
     }
   };
@@ -123,6 +111,13 @@ function Ground({ planeRef, center }) {
 
   return (
     <>
+      {/* ✅ FALLBACK GROUND (so you NEVER see empty space) */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]}>
+        <planeGeometry args={[5000, 5000]} />
+        <meshStandardMaterial color="#2f7d32" />
+      </mesh>
+
+      {/* tiles */}
       {Array.from(tilesRef.current.values()).map((tile) => (
         <Tile key={tile.key} {...tile} size={tileSize} />
       ))}
@@ -158,7 +153,7 @@ function Compass({ heading }) {
   );
 }
 
-// ================= PLANE (FIXED CAMERA START BUG) =================
+// ================= PLANE (FIXED VISIBILITY) =================
 const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
   const { camera } = useThree();
 
@@ -167,6 +162,23 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
   const velocity = useRef(new THREE.Vector3());
   const rot = useRef({ pitch: 0, yaw: 0 });
   const keys = useRef({});
+
+  // ✅ FIX MODEL CENTER + SCALE (CRITICAL)
+  useEffect(() => {
+    if (!model) return;
+
+    const box = new THREE.Box3().setFromObject(model);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+
+    model.position.sub(center); // center model at origin
+
+    const size = new THREE.Vector3();
+    box.getSize(size);
+
+    const scale = 2 / Math.max(size.x, size.y, size.z);
+    model.scale.set(scale, scale, scale);
+  }, [model]);
 
   useEffect(() => {
     const down = (e) => (keys.current[e.key.toLowerCase()] = true);
@@ -201,9 +213,8 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
 
     setHeading(rot.current.yaw);
 
-    // FIXED CAMERA (prevents inside-plane view)
-    const camOffset = new THREE.Vector3(0, 6, 14);
-    camOffset.applyEuler(p.rotation);
+    // ✅ SAFE CAMERA (NEVER INSIDE MODEL)
+    const camOffset = new THREE.Vector3(0, 8, 18).applyEuler(p.rotation);
 
     camera.position.lerp(p.position.clone().add(camOffset), 0.08);
     camera.lookAt(p.position);
@@ -215,8 +226,8 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
   });
 
   return (
-    <group ref={planeRef} position={[0, 5, 0]}>
-      <primitive object={model} scale={2} />
+    <group ref={planeRef} position={[0, 3, 0]}>
+      <primitive object={model} />
     </group>
   );
 });
@@ -234,13 +245,13 @@ export default function FlightSimulation() {
       <Compass heading={heading} />
       <MiniMap heading={heading} />
 
-      <Canvas camera={{ position: [0, 6, 14], fov: 60 }}>
+      <Canvas camera={{ position: [0, 8, 18], fov: 60 }}>
         <color attach="background" args={["#87CEEB"]} />
-        <ambientLight intensity={0.7} />
+        <ambientLight intensity={0.8} />
         <directionalLight position={[100, 100, 50]} intensity={2} />
         <Sky sunPosition={[100, 20, 100]} />
 
-        <Ground planeRef={planeRef} center={center} />
+        <Ground center={center} />
 
         <Suspense fallback={null}>
           <Plane
