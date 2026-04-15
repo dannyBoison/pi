@@ -9,7 +9,6 @@ function Tile({ url, position, size }) {
   const materialRef = useRef();
   const [opacity, setOpacity] = useState(0);
 
-  // fade-in effect
   useEffect(() => {
     let i = 0;
     const interval = setInterval(() => {
@@ -37,6 +36,107 @@ function Tile({ url, position, size }) {
   );
 }
 
+// ================= MINI MAP (NEW GTA STYLE) =================
+function MiniMap({ planeRef, heading }) {
+  const [pos, setPos] = useState({ x: 0, z: 0 });
+
+  useFrame(() => {
+    if (!planeRef.current) return;
+
+    setPos({
+      x: planeRef.current.position.x,
+      z: planeRef.current.position.z,
+    });
+  });
+
+  const size = 160;
+  const scale = 0.08; // world → minimap scale
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        bottom: 20,
+        right: 20,
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: "rgba(0,0,0,0.6)",
+        border: "3px solid rgba(255,255,255,0.3)",
+        backdropFilter: "blur(6px)",
+        overflow: "hidden",
+        zIndex: 200,
+      }}
+    >
+      {/* rotating map container */}
+      <div
+        style={{
+          position: "absolute",
+          width: "100%",
+          height: "100%",
+          transform: `rotate(${-heading}rad)`,
+          transition: "transform 0.1s linear",
+        }}
+      >
+        {/* grid background */}
+        <div
+          style={{
+            position: "absolute",
+            width: "200%",
+            height: "200%",
+            left: "-50%",
+            top: "-50%",
+            backgroundImage:
+              "radial-gradient(rgba(255,255,255,0.2) 1px, transparent 1px)",
+            backgroundSize: "20px 20px",
+          }}
+        />
+
+        {/* player position dot */}
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 10,
+            height: 10,
+            background: "lime",
+            borderRadius: "50%",
+            boxShadow: "0 0 10px lime",
+          }}
+        />
+
+        {/* direction arrow */}
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "40%",
+            transform: "translateX(-50%)",
+            width: 0,
+            height: 0,
+            borderLeft: "6px solid transparent",
+            borderRight: "6px solid transparent",
+            borderBottom: "12px solid white",
+          }}
+        />
+      </div>
+
+      {/* border glow */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          borderRadius: "50%",
+          boxShadow: "inset 0 0 20px rgba(0,255,0,0.2)",
+          pointerEvents: "none",
+        }}
+      />
+    </div>
+  );
+}
+
 // ================= GROUND =================
 function Ground({ planeRef, center }) {
   const zoom = 14;
@@ -53,7 +153,6 @@ function Ground({ planeRef, center }) {
 
   const maxTile = Math.pow(2, zoom);
 
-  // normalize tile
   const normalizeTile = (x, y) => {
     x = ((x % maxTile) + maxTile) % maxTile;
     if (y < 0 || y >= maxTile) return null;
@@ -106,7 +205,6 @@ function Ground({ planeRef, center }) {
     });
   };
 
-  // 🚀 smoother directional loading
   const updateTiles = (planePos, baseTile) => {
     const range = 8;
 
@@ -134,7 +232,6 @@ function Ground({ planeRef, center }) {
     tilesRef.current.clear();
   }, [center]);
 
-  // 🚀 throttled update loop
   useFrame((state) => {
     if (!planeRef.current) return;
 
@@ -167,31 +264,27 @@ function Ground({ planeRef, center }) {
 // ================= COMPASS =================
 function Compass({ heading }) {
   return (
-    <div
-      style={{
-        position: "absolute",
-        top: 20,
-        left: "50%",
-        transform: "translateX(-50%)",
-        width: 120,
-        height: 120,
-        borderRadius: "50%",
-        background: "#000000cc",
-        color: "white",
-        zIndex: 100,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontWeight: "bold",
-      }}
-    >
-      <div
-        style={{
-          position: "relative",
-          transform: `rotate(${-heading}rad)`,
-          transition: "transform 0.1s linear",
-        }}
-      >
+    <div style={{
+      position: "absolute",
+      top: 20,
+      left: "50%",
+      transform: "translateX(-50%)",
+      width: 120,
+      height: 120,
+      borderRadius: "50%",
+      background: "#000000cc",
+      color: "white",
+      zIndex: 100,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontWeight: "bold"
+    }}>
+      <div style={{
+        position: "relative",
+        transform: `rotate(${-heading}rad)`,
+        transition: "transform 0.1s linear"
+      }}>
         N
         <div style={{ position: "absolute", right: -40, top: 0 }}>E</div>
         <div style={{ position: "absolute", bottom: -40, left: 0 }}>S</div>
@@ -305,41 +398,38 @@ export default function FlightSimulation() {
     e.preventDefault();
     if (!city) return;
 
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${city}`
-      );
-      const data = await res.json();
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${city}`
+    );
+    const data = await res.json();
 
-      if (!data.length) return alert("City not found");
+    if (!data.length) return alert("City not found");
 
-      setCenter({
-        lat: parseFloat(data[0].lat),
-        lon: parseFloat(data[0].lon),
-      });
+    setCenter({
+      lat: parseFloat(data[0].lat),
+      lon: parseFloat(data[0].lon),
+    });
 
-      planeRef.current?.position.set(0, 3, 0);
-    } catch {
-      alert("Search failed");
-    }
+    planeRef.current?.position.set(0, 3, 0);
   };
 
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
       <Compass heading={heading} />
 
-      <div
-        style={{
-          position: "absolute",
-          top: 20,
-          left: 20,
-          zIndex: 100,
-          background: "#000000cc",
-          padding: 15,
-          borderRadius: 10,
-          color: "white",
-        }}
-      >
+      {/* ✅ GTA MINI MAP */}
+      <MiniMap planeRef={planeRef} heading={heading} />
+
+      <div style={{
+        position: "absolute",
+        top: 20,
+        left: 20,
+        zIndex: 100,
+        background: "#000000cc",
+        padding: 15,
+        borderRadius: 10,
+        color: "white"
+      }}>
         <form onSubmit={handleSearch}>
           <input
             value={city}
@@ -363,12 +453,7 @@ export default function FlightSimulation() {
         <Ground planeRef={planeRef} center={center} />
 
         <Suspense fallback={null}>
-          <Plane
-            speed={0.12}
-            setStats={setStats}
-            setHeading={setHeading}
-            ref={planeRef}
-          />
+          <Plane speed={0.12} setStats={setStats} setHeading={setHeading} ref={planeRef} />
         </Suspense>
       </Canvas>
     </div>
