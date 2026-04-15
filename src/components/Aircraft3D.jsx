@@ -22,6 +22,7 @@ function Ground({ planeRef, center }) {
 
   const groupRef = useRef();
   const [tiles, setTiles] = useState([]);
+  const currentTile = useRef({ x: 0, y: 0 });
 
   const latLonToTile = (lat, lon) => {
     const x = Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
@@ -38,9 +39,7 @@ function Ground({ planeRef, center }) {
     return { x, y };
   };
 
-  useEffect(() => {
-    const { x, y } = latLonToTile(center.lat, center.lon);
-
+  const generateTiles = (x, y) => {
     const grid = [];
     for (let i = -4; i <= 4; i++) {
       for (let j = -4; j <= 4; j++) {
@@ -50,16 +49,33 @@ function Ground({ planeRef, center }) {
         });
       }
     }
-
     setTiles(grid);
+  };
+
+  useEffect(() => {
+    const { x, y } = latLonToTile(center.lat, center.lon);
+    currentTile.current = { x, y };
+    generateTiles(x, y);
   }, [center]);
 
-  // 🔥 Move world instead of tiles (smooth + infinite feel)
   useFrame(() => {
     if (!planeRef.current || !groupRef.current) return;
 
+    // move world
     groupRef.current.position.x = -planeRef.current.position.x * 0.5;
     groupRef.current.position.z = -planeRef.current.position.z * 0.5;
+
+    // 🔥 detect movement across tiles
+    const moveX = Math.floor(planeRef.current.position.x / tileSize);
+    const moveZ = Math.floor(planeRef.current.position.z / tileSize);
+
+    const newX = currentTile.current.x + moveX;
+    const newY = currentTile.current.y + moveZ;
+
+    if (newX !== currentTile.current.x || newY !== currentTile.current.y) {
+      currentTile.current = { x: newX, y: newY };
+      generateTiles(newX, newY);
+    }
   });
 
   return (
@@ -72,7 +88,7 @@ function Ground({ planeRef, center }) {
 }
 
 // ================= PLANE =================
-const Plane = React.forwardRef(({ speed, setStats }, planeRef) => {
+const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
   const { camera } = useThree();
 
   let model;
@@ -115,7 +131,6 @@ const Plane = React.forwardRef(({ speed, setStats }, planeRef) => {
     const p = planeRef.current;
     if (!p) return;
 
-    // movement
     if (keys.current["a"]) rotation.current.yaw += 0.01;
     if (keys.current["d"]) rotation.current.yaw -= 0.01;
     if (keys.current["w"]) rotation.current.pitch += 0.008;
@@ -133,8 +148,11 @@ const Plane = React.forwardRef(({ speed, setStats }, planeRef) => {
     velocity.current.lerp(forward, 0.05);
     p.position.add(velocity.current);
 
-    // 🔥 CAMERA FIX (OUTSIDE PLANE)
-    const camOffset = new THREE.Vector3(0, 4, 10); // BACK + UP
+    // 🔥 HEADING (for compass)
+    const heading = THREE.MathUtils.radToDeg(rotation.current.yaw);
+    setHeading(heading);
+
+    const camOffset = new THREE.Vector3(0, 4, 10);
     camOffset.applyEuler(p.rotation);
 
     camera.position.lerp(
@@ -164,9 +182,42 @@ const Plane = React.forwardRef(({ speed, setStats }, planeRef) => {
   );
 });
 
+// ================= COMPASS =================
+function Compass({ heading }) {
+  return (
+    <div style={{
+      position: "absolute",
+      top: 20,
+      left: "50%",
+      transform: "translateX(-50%)",
+      width: 120,
+      height: 120,
+      borderRadius: "50%",
+      background: "#000000cc",
+      color: "white",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontWeight: "bold",
+      zIndex: 100
+    }}>
+      <div style={{
+        transform: `rotate(${-heading}deg)`,
+        transition: "transform 0.1s linear"
+      }}>
+        N
+        <div style={{ position: "absolute", top: "40%", left: "90%" }}>E</div>
+        <div style={{ position: "absolute", top: "90%", left: "45%" }}>S</div>
+        <div style={{ position: "absolute", top: "40%", left: "0%" }}>W</div>
+      </div>
+    </div>
+  );
+}
+
 // ================= MAIN =================
 export default function FlightSimulation() {
   const [stats, setStats] = useState({ speed: 0, altitude: 0 });
+  const [heading, setHeading] = useState(0);
   const planeRef = useRef();
 
   const [city, setCity] = useState("");
@@ -177,7 +228,6 @@ export default function FlightSimulation() {
 
   const handleSearch = async (e) => {
     e.preventDefault();
-
     if (!city) return;
 
     try {
@@ -193,7 +243,6 @@ export default function FlightSimulation() {
         lon: parseFloat(data[0].lon),
       });
 
-      // reset plane
       if (planeRef.current) {
         planeRef.current.position.set(0, 3, 0);
       }
@@ -205,6 +254,9 @@ export default function FlightSimulation() {
 
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
+
+      {/* 🧭 Compass */}
+      <Compass heading={heading} />
 
       {/* UI */}
       <div style={{
@@ -235,13 +287,17 @@ export default function FlightSimulation() {
         <color attach="background" args={["#87CEEB"]} />
         <ambientLight intensity={0.6} />
         <directionalLight position={[100, 100, 50]} intensity={2} />
-
         <Sky sunPosition={[100, 20, 100]} />
 
         <Ground planeRef={planeRef} center={center} />
 
         <Suspense fallback={null}>
-          <Plane speed={0.12} setStats={setStats} ref={planeRef} />
+          <Plane
+            speed={0.12}
+            setStats={setStats}
+            setHeading={setHeading}
+            ref={planeRef}
+          />
         </Suspense>
       </Canvas>
     </div>
