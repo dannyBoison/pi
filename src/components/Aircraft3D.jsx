@@ -18,11 +18,10 @@ function Tile({ url, position, size }) {
 // ================= GROUND =================
 function Ground({ planeRef, center }) {
   const zoom = 14;
-  const tileSize = 120;
+  const tileSize = 140; // 🔥 slightly bigger spacing for better scale feel
 
   const groupRef = useRef();
   const [tiles, setTiles] = useState([]);
-
   const lastTile = useRef({ x: 0, y: 0 });
 
   const LOAD_RADIUS = 7;
@@ -114,13 +113,9 @@ function Compass({ heading }) {
       zIndex: 100,
       display: "flex",
       alignItems: "center",
-      justifyContent: "center",
-      fontWeight: "bold"
+      justifyContent: "center"
     }}>
-      <div style={{
-        position: "relative",
-        transform: `rotate(${-heading}rad)`
-      }}>
+      <div style={{ transform: `rotate(${-heading}rad)` }}>
         N
         <div style={{ position: "absolute", right: -40 }}>E</div>
         <div style={{ position: "absolute", bottom: -40 }}>S</div>
@@ -130,34 +125,8 @@ function Compass({ heading }) {
   );
 }
 
-// ================= MINI MAP =================
-function MiniMap({ lat, lon }) {
-  return (
-    <div style={{
-      position: "absolute",
-      bottom: 20,
-      right: 20,
-      width: 180,
-      height: 180,
-      background: "#111",
-      border: "2px solid white",
-      borderRadius: 10,
-      overflow: "hidden",
-      zIndex: 100
-    }}>
-      <iframe
-        title="mini-map"
-        width="100%"
-        height="100%"
-        style={{ border: 0 }}
-        src={`https://www.openstreetmap.org/export/embed.html?bbox=${lon-0.05},${lat-0.05},${lon+0.05},${lat+0.05}&layer=mapnik`}
-      />
-    </div>
-  );
-}
-
 // ================= PLANE =================
-const Plane = React.forwardRef(({ speed, setStats, setHeading, setGPS }, planeRef) => {
+const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
   const { camera } = useThree();
 
   let model;
@@ -167,13 +136,9 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading, setGPS }, planeRe
     model = null;
   }
 
-  const velocity = useRef(new THREE.Vector3(0, 0, -speed));
+  const velocity = useRef(new THREE.Vector3());
   const rotation = useRef({ pitch: 0, yaw: 0, roll: 0 });
   const keys = useRef({});
-
-  const gps = useRef({ lat: 5.6037, lon: -0.1870 });
-
-  const metersToDeg = 0.00002;
 
   useEffect(() => {
     const down = (e) => (keys.current[e.key.toLowerCase()] = true);
@@ -209,20 +174,19 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading, setGPS }, planeRe
     velocity.current.lerp(forward, 0.05);
     p.position.add(velocity.current);
 
-    // ================= GPS SIMULATION =================
-    gps.current.lat += forward.z * metersToDeg;
-    gps.current.lon += forward.x * metersToDeg;
-
-    setGPS({ ...gps.current });
-
     setHeading(rotation.current.yaw);
 
-    const camOffset = new THREE.Vector3(0, 4, 10);
+    // ================= CAMERA FIX (IMPORTANT) =================
+    const camOffset = new THREE.Vector3(0, 8, 22); // 🔥 FARTHER + HIGHER
     camOffset.applyEuler(p.rotation);
 
-    camera.position.lerp(p.position.clone().add(camOffset), 0.08);
+    const desiredCamPos = p.position.clone().add(camOffset);
 
-    camera.lookAt(p.position.clone().add(new THREE.Vector3(0, 1, 0)));
+    camera.position.lerp(desiredCamPos, 0.05); // smoother follow
+
+    // prevent clipping into plane
+    const lookTarget = p.position.clone().add(new THREE.Vector3(0, 2, 0));
+    camera.lookAt(lookTarget);
 
     setStats({
       speed: speed.toFixed(2),
@@ -248,107 +212,19 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading, setGPS }, planeRe
 export default function FlightSimulation() {
   const [stats, setStats] = useState({ speed: 0, altitude: 0 });
   const [heading, setHeading] = useState(0);
-  const [gps, setGPS] = useState({ lat: 5.6037, lon: -0.1870 });
-
   const planeRef = useRef();
 
-  const [city, setCity] = useState("");
   const [center, setCenter] = useState({
     lat: 5.6037,
     lon: -0.1870,
   });
 
-  // ================= AUTO CITY DETECTION =================
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${gps.lat}&lon=${gps.lon}`
-        );
-        const data = await res.json();
-
-        if (data?.address?.city || data?.address?.town) {
-          setCity(data.address.city || data.address.town);
-        }
-      } catch {}
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [gps]);
-
-  const handleSearch = async (e) => {
-    e.preventDefault();
-
-    if (!city) return;
-
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${city}`
-    );
-    const data = await res.json();
-
-    if (!data.length) return;
-
-    setCenter({
-      lat: parseFloat(data[0].lat),
-      lon: parseFloat(data[0].lon),
-    });
-
-    if (planeRef.current) {
-      planeRef.current.position.set(0, 3, 0);
-    }
-  };
-
   return (
-    <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
-
-      {/* 🧭 COMPASS */}
+    <div style={{ width: "100vw", height: "100vh" }}>
       <Compass heading={heading} />
 
-      {/* 📍 LIVE GPS */}
-      <div style={{
-        position: "absolute",
-        top: 20,
-        right: 20,
-        zIndex: 100,
-        background: "#000000cc",
-        padding: 10,
-        borderRadius: 10,
-        color: "white"
-      }}>
-        <p>📍 Lat: {gps.lat.toFixed(5)}</p>
-        <p>📍 Lon: {gps.lon.toFixed(5)}</p>
-        <p>🏙️ {city}</p>
-      </div>
-
-      {/* 🗺️ MINI MAP */}
-      <MiniMap lat={gps.lat} lon={gps.lon} />
-
-      {/* UI */}
-      <div style={{
-        position: "absolute",
-        top: 20,
-        left: 20,
-        zIndex: 100,
-        background: "#000000cc",
-        padding: 15,
-        borderRadius: 10,
-        color: "white"
-      }}>
-        <form onSubmit={handleSearch}>
-          <input
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            placeholder="Search city"
-            style={{ padding: 8, marginRight: 5 }}
-          />
-          <button>Search</button>
-        </form>
-
-        <p>Speed: {stats.speed}</p>
-        <p>Altitude: {stats.altitude}</p>
-      </div>
-
-      <Canvas camera={{ position: [0, 4, 10], fov: 60 }}>
+      <Canvas camera={{ position: [0, 10, 25], fov: 75 }}> 
+        {/* 🔥 FIX: better default flight view */}
         <color attach="background" args={["#87CEEB"]} />
         <ambientLight intensity={0.6} />
         <directionalLight position={[100, 100, 50]} intensity={2} />
@@ -361,7 +237,6 @@ export default function FlightSimulation() {
             speed={0.12}
             setStats={setStats}
             setHeading={setHeading}
-            setGPS={setGPS}
             ref={planeRef}
           />
         </Suspense>
