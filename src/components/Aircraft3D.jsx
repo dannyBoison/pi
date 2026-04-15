@@ -38,51 +38,57 @@ function Tile({ url, position, size }) {
 
 // ================= MINI MAP (NEW GTA STYLE) =================
 
+
 function MiniMap({ planeRef, heading }) {
   const size = 170;
 
-  const zoom = 14;
-  const tileSize = 120;
-  const scale = 0.04; // shrink world into radar
-
   const [center, setCenter] = useState({ x: 0, z: 0 });
 
-  useFrame(() => {
-    if (!planeRef.current) return;
+  useEffect(() => {
+    let frame;
 
-    setCenter({
-      x: planeRef.current.position.x,
-      z: planeRef.current.position.z,
-    });
-  });
+    const loop = () => {
+      if (planeRef.current) {
+        setCenter({
+          x: planeRef.current.position.x,
+          z: planeRef.current.position.z,
+        });
+      }
+
+      frame = requestAnimationFrame(loop);
+    };
+
+    loop();
+    return () => cancelAnimationFrame(frame);
+  }, [planeRef]);
+
+  const zoom = 14;
+  const tileSize = 120;
+  const scale = 0.04;
 
   const baseX = Math.floor(center.x / tileSize);
   const baseZ = Math.floor(center.z / tileSize);
 
   const tiles = [];
 
-  // small radar grid (THIS is real map logic now)
   for (let x = -2; x <= 2; x++) {
     for (let z = -2; z <= 2; z++) {
       const tx = baseX + x;
       const tz = baseZ + z;
 
-      const url = `https://tile.openstreetmap.org/${zoom}/${tx}/${tz}.png`;
-
       tiles.push(
         <img
           key={`${tx}-${tz}`}
-          src={url}
-          alt=""
+          src={`https://tile.openstreetmap.org/${zoom}/${tx}/${tz}.png`}
           style={{
             position: "absolute",
             width: tileSize * scale,
             height: tileSize * scale,
             left: "50%",
             top: "50%",
-            transform: `translate(${x * 25}px, ${z * 25}px)`,
-            opacity: 0.8,
-            filter: "brightness(0.6) contrast(1.2) saturate(0.8)",
+            transform: `translate(${x * 22}px, ${z * 22}px)`,
+            opacity: 0.85,
+            filter: "brightness(0.7) contrast(1.2)",
           }}
         />
       );
@@ -100,19 +106,18 @@ function MiniMap({ planeRef, heading }) {
         borderRadius: "50%",
         overflow: "hidden",
         border: "2px solid rgba(0,255,120,0.4)",
-        boxShadow: "0 0 25px rgba(0,255,120,0.25)",
-        zIndex: 200,
+        boxShadow: "0 0 20px rgba(0,255,120,0.25)",
         background: "#000",
+        zIndex: 200,
       }}
     >
-      {/* ROTATION (WORLD ORIENTATION) */}
+      {/* ROTATION */}
       <div
         style={{
           position: "absolute",
           width: "100%",
           height: "100%",
           transform: `rotate(${-heading}rad)`,
-          transformOrigin: "center",
         }}
       >
         {tiles}
@@ -134,7 +139,7 @@ function MiniMap({ planeRef, heading }) {
         }}
       />
 
-      {/* NORTH ARROW */}
+      {/* ARROW */}
       <div
         style={{
           position: "absolute",
@@ -150,13 +155,13 @@ function MiniMap({ planeRef, heading }) {
         }}
       />
 
-      {/* radar glow */}
+      {/* glow */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          boxShadow: "inset 0 0 20px rgba(0,255,120,0.2)",
           borderRadius: "50%",
+          boxShadow: "inset 0 0 25px rgba(0,255,120,0.2)",
           pointerEvents: "none",
         }}
       />
