@@ -227,20 +227,23 @@ function Minimap({ planeRef, heading, center }) {
           }}
         >
           {tiles.map((t) => (
-            <img
-              key={t.key}
-              src={t.url}
-              alt=""
-              style={{
-                position: "absolute",
-                width: tileSize,
-                height: tileSize,
-                transform: `
-                  translate(-50%, -50%)
-                  translate(${t.x * tileSize}px, ${t.y * tileSize}px)
-                `,
-              }}
-            />
+         <img
+  key={t.key}
+  src={t.url}
+  alt=""
+  onError={(e) => {
+    e.target.style.background = "red"; // shows failed tiles
+  }}
+  style={{
+    position: "absolute",
+    width: tileSize,
+    height: tileSize,
+    transform: `
+      translate(-50%, -50%)
+      translate(${t.x * tileSize}px, ${t.y * tileSize}px)
+    `,
+  }}
+/>
           ))}
         </div>
       </div>
