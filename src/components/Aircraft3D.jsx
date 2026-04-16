@@ -134,10 +134,22 @@ function Minimap({ planeRef, heading, center }) {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
   const planeMarker = useRef(null);
-  
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
-  
-  // INIT MAP ONCE
+
+  mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
+
+  // 🔥 keep latest values without restarting loop
+  const centerRef = useRef(center);
+  const headingRef = useRef(heading);
+
+  useEffect(() => {
+    centerRef.current = center;
+  }, [center]);
+
+  useEffect(() => {
+    headingRef.current = heading;
+  }, [heading]);
+
+  // ================= INIT MAP ONCE =================
   useEffect(() => {
     if (mapRef.current) return;
 
@@ -147,7 +159,7 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
       center: [center.lon, center.lat],
       zoom: 14,
       pitch: 0,
-      interactive: false, // minimap only
+      interactive: false,
     });
 
     // player marker
@@ -163,35 +175,38 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
       .addTo(mapRef.current);
   }, []);
 
-  // UPDATE POSITION (smooth, no reload)
- useEffect(() => {
-  if (!mapRef.current || !planeRef.current) return;
+  // ================= UPDATE LOOP (RUNS ONCE) =================
+  useEffect(() => {
+    if (!mapRef.current || !planeRef.current) return;
 
-  let frameId;
+    let frameId;
 
-  const update = () => {
-    const p = planeRef.current.position;
+    const update = () => {
+      const p = planeRef.current.position;
+      const c = centerRef.current;
 
-    const lon = center.lon + p.x * 0.0003;
-    const lat = center.lat + p.z * 0.0003;
+      const lon = c.lon + p.x * 0.0003;
+      const lat = c.lat + p.z * 0.0003;
 
-    // move map smoothly
-    mapRef.current.setCenter([lon, lat]);
+      // move map smoothly
+      mapRef.current.setCenter([lon, lat]);
 
-    // move player marker
-    planeMarker.current?.setLngLat([lon, lat]);
+      // move player marker
+      planeMarker.current?.setLngLat([lon, lat]);
 
-    // 🧭 ROTATION FIX (Problem 3 solution)
-    mapRef.current.setBearing(-heading * (180 / Math.PI));
+      // 🧭 rotation sync (fixed)
+      mapRef.current.setBearing(
+        -headingRef.current * (180 / Math.PI)
+      );
 
-    frameId = requestAnimationFrame(update);
-  };
+      frameId = requestAnimationFrame(update);
+    };
 
-  update();
+    update();
 
-  return () => cancelAnimationFrame(frameId);
-}, [center, heading, planeRef]);
-  
+    return () => cancelAnimationFrame(frameId);
+  }, []);
+
   return (
     <div
       ref={mapContainer}
