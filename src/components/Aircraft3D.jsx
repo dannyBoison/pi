@@ -128,70 +128,38 @@ function Ground({ planeRef, center }) {
 }
 
 // ================= MINIMAP =================
-
+ONLY REPLACE YOUR MINIMAP WITH THIS
 function Minimap({ planeRef, heading, center }) {
-  const zoom = 14;
   const size = 180;
-  const tileSize = 70;
 
-  const [tiles, setTiles] = useState([]);
+  // ✅ ENV SAFE TOKEN
+  const MAPBOX_TOKEN =
+    process.env.REACT_APP_MAPBOX_TOKEN ||
+    import.meta?.env?.VITE_MAPBOX_TOKEN;
 
-  const maxTile = Math.pow(2, zoom);
-
-  const latLonToTile = (lat, lon) => {
-    const x = Math.floor(((lon + 180) / 360) * maxTile);
-    const y = Math.floor(
-      ((1 -
-        Math.log(
-          Math.tan((lat * Math.PI) / 180) +
-          1 / Math.cos((lat * Math.PI) / 180)
-        ) /
-        Math.PI) /
-        2) *
-        maxTile
-    );
-    return { x, y };
-  };
+  const [url, setUrl] = useState("");
 
   useEffect(() => {
-    let frame;
+    if (!MAPBOX_TOKEN) return;
 
     const update = () => {
       if (!planeRef.current) return;
 
       const p = planeRef.current.position;
-      const base = latLonToTile(center.lat, center.lon);
 
-      // smoother offset scaling (IMPORTANT FIX)
-      const offsetX = Math.round(p.x / 200);
-      const offsetY = Math.round(p.z / 200);
+      const lon = center.lon + p.x * 0.0005;
+      const lat = center.lat + p.z * 0.0005;
 
-      const centerTile = {
-        x: base.x + offsetX,
-        y: base.y + offsetY,
-      };
+      // ✅ SINGLE STATIC IMAGE (NO TILE BUGS)
+      const newUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lon},${lat},14,0/300x300?access_token=${MAPBOX_TOKEN}`;
 
-      const newTiles = [];
+      setUrl(newUrl);
 
-      for (let i = -1; i <= 1; i++) {
-        for (let j = -1; j <= 1; j++) {
-          newTiles.push({
-            key: `${centerTile.x + i},${centerTile.y + j}`,
-            url: `https://a.tile.openstreetmap.fr/hot/${zoom}/${centerTile.x + i}/${centerTile.y + j}.png`,
-            x: i,
-            y: j,
-          });
-        }
-      }
-
-      setTiles(newTiles);
-
-      frame = requestAnimationFrame(update);
+      requestAnimationFrame(update);
     };
 
     update();
-    return () => cancelAnimationFrame(frame);
-  }, [planeRef, center]);
+  }, [planeRef, center, MAPBOX_TOKEN]);
 
   return (
     <div
@@ -208,44 +176,25 @@ function Minimap({ planeRef, heading, center }) {
         zIndex: 100,
       }}
     >
-      {/* ROTATION LAYER */}
+      {/* ROTATION */}
       <div
         style={{
-          position: "absolute",
           width: "100%",
           height: "100%",
           transform: `rotate(${-heading}rad)`,
-          transformOrigin: "center",
         }}
       >
-        {/* CENTERED MAP LAYER */}
-        <div
-          style={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-          }}
-        >
-          {tiles.map((t) => (
-         <img
-  key={t.key}
-  src={t.url}
-  alt=""
-  onError={(e) => {
-    e.target.style.background = "red"; // shows failed tiles
-  }}
-  style={{
-    position: "absolute",
-    width: tileSize,
-    height: tileSize,
-    transform: `
-      translate(-50%, -50%)
-      translate(${t.x * tileSize}px, ${t.y * tileSize}px)
-    `,
-  }}
-/>
-          ))}
-        </div>
+        {url && (
+          <img
+            src={url}
+            alt="minimap"
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+            }}
+          />
+        )}
       </div>
 
       {/* PLAYER ICON */}
@@ -266,8 +215,6 @@ function Minimap({ planeRef, heading, center }) {
     </div>
   );
 }
-
-
 // ================= COMPASS =================
 function Compass({ heading }) {
   return (
