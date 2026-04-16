@@ -128,11 +128,12 @@ function Ground({ planeRef, center }) {
 }
 
 // ================= MINIMAP =================
+🔥 REPLACE ONLY YOUR Minimap FUNCTION WITH THIS
 function Minimap({ planeRef, heading, center }) {
   const [tiles, setTiles] = useState([]);
 
   const zoom = 14;
-  const tileSize = 256;
+  const tileSize = 80; // ✅ scaled DOWN to fit minimap
 
   const maxTile = Math.pow(2, zoom);
 
@@ -158,8 +159,6 @@ function Minimap({ planeRef, heading, center }) {
       if (!planeRef.current) return;
 
       const p = planeRef.current.position;
-
-      // convert world → tile offset
       const base = latLonToTile(center.lat, center.lon);
 
       const offsetX = Math.floor(p.x / 120);
@@ -172,12 +171,9 @@ function Minimap({ planeRef, heading, center }) {
 
       for (let i = -1; i <= 1; i++) {
         for (let j = -1; j <= 1; j++) {
-          const x = tileX + i;
-          const y = tileY + j;
-
           newTiles.push({
-            key: `${x},${y}`,
-            url: `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`,
+            key: `${tileX + i},${tileY + j}`,
+            url: `https://tile.openstreetmap.org/${zoom}/${tileX + i}/${tileY + j}.png`,
             x: i,
             y: j,
           });
@@ -222,14 +218,15 @@ function Minimap({ planeRef, heading, center }) {
               position: "absolute",
               width: tileSize,
               height: tileSize,
-              left: `calc(50% + ${tile.x * tileSize - tileSize / 2}px)`,
-              top: `calc(50% + ${tile.y * tileSize - tileSize / 2}px)`
+              left: `calc(50% + ${tile.x * tileSize}px)`,
+              top: `calc(50% + ${tile.y * tileSize}px)`,
+              transform: "translate(-50%, -50%)"
             }}
           />
         ))}
       </div>
 
-      {/* PLAYER (centered) */}
+      {/* PLAYER */}
       <div style={{
         position: "absolute",
         top: "50%",
