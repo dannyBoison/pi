@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect, Suspense } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Sky, useGLTF, useTexture } from "@react-three/drei";
 import * as THREE from "three";
+import mapboxgl from "mapbox-gl";
 
 // ================= TILE =================
 function Tile({ url, position, size }) {
@@ -128,100 +129,84 @@ function Ground({ planeRef, center }) {
 }
 
 // ================= MINIMAP =================
+
 function Minimap({ planeRef, heading, center }) {
-  const size = 180;
-
-  const MAPBOX_TOKEN =
-    import.meta?.env?.VITE_MAPBOX_TOKEN ||
-    process.env.REACT_APP_MAPBOX_TOKEN;
-
-  const [url, setUrl] = useState(null);
-
-  // store last position so we don't spam updates
-  const lastPos = useRef({ x: null, z: null });
-
+  const mapContainer = useRef(null);
+  const mapRef = useRef(null);
+  const planeMarker = useRef(null);
+  
+mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
+  
+  // INIT MAP ONCE
   useEffect(() => {
-    if (!MAPBOX_TOKEN) return;
+    if (mapRef.current) return;
 
-    const interval = setInterval(() => {
-      if (!planeRef.current) return;
+    mapRef.current = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: "mapbox://styles/mapbox/satellite-v9",
+      center: [center.lon, center.lat],
+      zoom: 14,
+      pitch: 0,
+      interactive: false, // minimap only
+    });
 
-      const p = planeRef.current.position;
+    // player marker
+    const el = document.createElement("div");
+    el.style.width = "0";
+    el.style.height = "0";
+    el.style.borderLeft = "7px solid transparent";
+    el.style.borderRight = "7px solid transparent";
+    el.style.borderBottom = "14px solid red";
 
-      // throttle updates (IMPORTANT FIX)
-      const snappedX = Math.floor(p.x / 10);
-      const snappedZ = Math.floor(p.z / 10);
+    planeMarker.current = new mapboxgl.Marker(el)
+      .setLngLat([center.lon, center.lat])
+      .addTo(mapRef.current);
+  }, []);
 
-      if (
-        snappedX === lastPos.current.x &&
-        snappedZ === lastPos.current.z
-      ) {
-        return;
-      }
+  // UPDATE POSITION (smooth, no reload)
+ useEffect(() => {
+  if (!mapRef.current || !planeRef.current) return;
 
-      lastPos.current = { x: snappedX, z: snappedZ };
+  let frameId;
 
-      const lon = center.lon + p.x * 0.0003;
-      const lat = center.lat + p.z * 0.0003;
+  const update = () => {
+    const p = planeRef.current.position;
 
-      const newUrl =
-        `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/` +
-        `${lon},${lat},14/300x300?access_token=${MAPBOX_TOKEN}`;
+    const lon = center.lon + p.x * 0.0003;
+    const lat = center.lat + p.z * 0.0003;
 
-      setUrl(newUrl);
-    }, 300); // 🔥 IMPORTANT: not every frame
+    // move map smoothly
+    mapRef.current.setCenter([lon, lat]);
 
-    return () => clearInterval(interval);
-  }, [center, MAPBOX_TOKEN, planeRef]);
+    // move player marker
+    planeMarker.current?.setLngLat([lon, lat]);
 
+    // 🧭 ROTATION FIX (Problem 3 solution)
+    mapRef.current.setBearing(-heading * (180 / Math.PI));
+
+    frameId = requestAnimationFrame(update);
+  };
+
+  update();
+
+  return () => cancelAnimationFrame(frameId);
+}, [center, heading, planeRef]);
+  
   return (
     <div
+      ref={mapContainer}
       style={{
         position: "absolute",
         bottom: 20,
         left: 20,
-        width: size,
-        height: size,
+        width: 180,
+        height: 180,
         borderRadius: "50%",
         overflow: "hidden",
         border: "3px solid white",
-        background: "#111",
         zIndex: 100,
       }}
-    >
-      {url ? (
-        <img
-          src={url}
-          alt="minimap"
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            transform: `rotate(${-heading}rad)`,
-          }}
-        />
-      ) : (
-        <div style={{ color: "white", padding: 20 }}>
-          Loading map...
-        </div>
-      )}
-
-      {/* PLAYER ICON */}
-      <div
-        style={{
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          width: 0,
-          height: 0,
-          borderLeft: "7px solid transparent",
-          borderRight: "7px solid transparent",
-          borderBottom: "14px solid red",
-          transform: "translate(-50%, -50%)",
-          zIndex: 10,
-        }}
-      />
-    </div>
+    />
   );
 }
 // ================= COMPASS =================
