@@ -2,7 +2,6 @@ import React, { useRef, useState, useEffect, Suspense } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Sky, useGLTF, useTexture } from "@react-three/drei";
 import * as THREE from "three";
-import mapboxgl from "mapbox-gl";
 
 // ================= TILE =================
 function Tile({ url, position, size }) {
@@ -129,99 +128,100 @@ function Ground({ planeRef, center }) {
 }
 
 // ================= MINIMAP =================
-
 function Minimap({ planeRef, heading, center }) {
-  const mapContainer = useRef(null);
-  const mapRef = useRef(null);
-  const planeMarker = useRef(null);
+  const size = 180;
 
-  mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
+  const MAPBOX_TOKEN =
+    import.meta?.env?.VITE_MAPBOX_TOKEN ||
+    process.env.REACT_APP_MAPBOX_TOKEN;
 
-  // 🔥 keep latest values without restarting loop
-  const centerRef = useRef(center);
-  const headingRef = useRef(heading);
+  const [url, setUrl] = useState(null);
 
-  useEffect(() => {
-    centerRef.current = center;
-  }, [center]);
+  // store last position so we don't spam updates
+  const lastPos = useRef({ x: null, z: null });
 
   useEffect(() => {
-    headingRef.current = heading;
-  }, [heading]);
+    if (!MAPBOX_TOKEN) return;
 
-  // ================= INIT MAP ONCE =================
-  useEffect(() => {
-    if (mapRef.current) return;
+    const interval = setInterval(() => {
+      if (!planeRef.current) return;
 
-    mapRef.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: "mapbox://styles/mapbox/satellite-v9",
-      center: [center.lon, center.lat],
-      zoom: 14,
-      pitch: 0,
-      interactive: false,
-    });
-
-    // player marker
-    const el = document.createElement("div");
-    el.style.width = "0";
-    el.style.height = "0";
-    el.style.borderLeft = "7px solid transparent";
-    el.style.borderRight = "7px solid transparent";
-    el.style.borderBottom = "14px solid red";
-
-    planeMarker.current = new mapboxgl.Marker(el)
-      .setLngLat([center.lon, center.lat])
-      .addTo(mapRef.current);
-  }, []);
-
-  // ================= UPDATE LOOP (RUNS ONCE) =================
-  useEffect(() => {
-    if (!mapRef.current || !planeRef.current) return;
-
-    let frameId;
-
-    const update = () => {
       const p = planeRef.current.position;
-      const c = centerRef.current;
 
-      const lon = c.lon + p.x * 0.0003;
-      const lat = c.lat + p.z * 0.0003;
+      // throttle updates (IMPORTANT FIX)
+      const snappedX = Math.floor(p.x / 10);
+      const snappedZ = Math.floor(p.z / 10);
 
-      // move map smoothly
-      mapRef.current.setCenter([lon, lat]);
+      if (
+        snappedX === lastPos.current.x &&
+        snappedZ === lastPos.current.z
+      ) {
+        return;
+      }
 
-      // move player marker
-      planeMarker.current?.setLngLat([lon, lat]);
+      lastPos.current = { x: snappedX, z: snappedZ };
 
-      // 🧭 rotation sync (fixed)
-      mapRef.current.setBearing(
-        -headingRef.current * (180 / Math.PI)
-      );
+      const lon = center.lon + p.x * 0.0003;
+      const lat = center.lat + p.z * 0.0003;
 
-      frameId = requestAnimationFrame(update);
-    };
+      const newUrl =
+        `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/` +
+        `${lon},${lat},14/300x300?access_token=${MAPBOX_TOKEN}`;
 
-    update();
+      setUrl(newUrl);
+    }, 300); // 🔥 IMPORTANT: not every frame
 
-    return () => cancelAnimationFrame(frameId);
-  }, []);
+    return () => clearInterval(interval);
+  }, [center, MAPBOX_TOKEN, planeRef]);
 
   return (
     <div
-      ref={mapContainer}
       style={{
         position: "absolute",
         bottom: 20,
         left: 20,
-        width: 180,
-        height: 180,
+        width: size,
+        height: size,
         borderRadius: "50%",
         overflow: "hidden",
         border: "3px solid white",
+        background: "#111",
         zIndex: 100,
       }}
-    />
+    >
+      {url ? (
+        <img
+          src={url}
+          alt="minimap"
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            transform: `rotate(${-heading}rad)`,
+          }}
+        />
+      ) : (
+        <div style={{ color: "white", padding: 20 }}>
+          Loading map...
+        </div>
+      )}
+
+      {/* PLAYER ICON */}
+      <div
+        style={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          width: 0,
+          height: 0,
+          borderLeft: "7px solid transparent",
+          borderRight: "7px solid transparent",
+          borderBottom: "14px solid red",
+          transform: "translate(-50%, -50%)",
+          zIndex: 10,
+        }}
+      />
+    </div>
   );
 }
 // ================= COMPASS =================
