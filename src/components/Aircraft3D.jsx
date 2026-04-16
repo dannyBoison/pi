@@ -128,7 +128,7 @@ function Ground({ planeRef, center }) {
 }
 
 // ================= MINIMAP =================
-🔥 REPLACE ONLY YOUR Minimap FUNCTION WITH THIS
+
 function Minimap({ planeRef, heading, center }) {
   const [tiles, setTiles] = useState([]);
 
