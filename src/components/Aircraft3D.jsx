@@ -129,26 +129,29 @@ function Ground({ planeRef, center }) {
 
 // ================= MINIMAP =================
 
+Replace ONLY your Minimap with this version:
+
 function Minimap({ planeRef, heading, center }) {
   const [tiles, setTiles] = useState([]);
 
   const zoom = 14;
-  const tileSize = 80; // ✅ scaled DOWN to fit minimap
+  const tileSize = 256; // OSM standard tile size
 
   const maxTile = Math.pow(2, zoom);
 
   const latLonToTile = (lat, lon) => {
     const x = Math.floor(((lon + 180) / 360) * maxTile);
-    const y = Math.floor(
-      ((1 -
-        Math.log(
-          Math.tan((lat * Math.PI) / 180) +
-          1 / Math.cos((lat * Math.PI) / 180)
-        ) /
-        Math.PI) /
-        2) *
-        maxTile
-    );
+    const y =
+      Math.floor(
+        ((1 -
+          Math.log(
+            Math.tan((lat * Math.PI) / 180) +
+              1 / Math.cos((lat * Math.PI) / 180)
+          ) /
+            Math.PI) /
+          2) *
+          maxTile
+      );
     return { x, y };
   };
 
@@ -164,16 +167,18 @@ function Minimap({ planeRef, heading, center }) {
       const offsetX = Math.floor(p.x / 120);
       const offsetY = Math.floor(p.z / 120);
 
-      const tileX = base.x + offsetX;
-      const tileY = base.y + offsetY;
+      const centerTile = {
+        x: base.x + offsetX,
+        y: base.y + offsetY,
+      };
 
       const newTiles = [];
 
       for (let i = -1; i <= 1; i++) {
         for (let j = -1; j <= 1; j++) {
           newTiles.push({
-            key: `${tileX + i},${tileY + j}`,
-            url: `https://tile.openstreetmap.org/${zoom}/${tileX + i}/${tileY + j}.png`,
+            key: `${centerTile.x + i},${centerTile.y + j}`,
+            url: `https://tile.openstreetmap.org/${zoom}/${centerTile.x + i}/${centerTile.y + j}.png`,
             x: i,
             y: j,
           });
@@ -181,7 +186,6 @@ function Minimap({ planeRef, heading, center }) {
       }
 
       setTiles(newTiles);
-
       frame = requestAnimationFrame(update);
     };
 
@@ -190,58 +194,67 @@ function Minimap({ planeRef, heading, center }) {
   }, [planeRef, center]);
 
   return (
-    <div style={{
-      position: "absolute",
-      bottom: 20,
-      left: 20,
-      width: 180,
-      height: 180,
-      borderRadius: "50%",
-      overflow: "hidden",
-      border: "3px solid white",
-      background: "#000",
-      zIndex: 100
-    }}>
-      {/* ROTATING MAP */}
-      <div style={{
+    <div
+      style={{
         position: "absolute",
-        width: "100%",
-        height: "100%",
-        transform: `rotate(${heading}rad)`,
-        transformOrigin: "center"
-      }}>
+        bottom: 20,
+        left: 20,
+        width: 180,
+        height: 180,
+        borderRadius: "50%",
+        overflow: "hidden",
+        border: "3px solid white",
+        background: "#111",
+        zIndex: 100,
+      }}
+    >
+      {/* MAP LAYER */}
+      <div
+        style={{
+          position: "absolute",
+          width: "100%",
+          height: "100%",
+          transform: `rotate(${heading}rad)`,
+          transformOrigin: "center",
+        }}
+      >
         {tiles.map((tile) => (
           <img
             key={tile.key}
             src={tile.url}
+            onError={(e) => (e.target.style.display = "none")}
             style={{
               position: "absolute",
-              width: tileSize,
-              height: tileSize,
-              left: `calc(50% + ${tile.x * tileSize}px)`,
-              top: `calc(50% + ${tile.y * tileSize}px)`,
-              transform: "translate(-50%, -50%)"
+              width: "100%",
+              height: "100%",
+              left: `${tile.x * 100}%`,
+              top: `${tile.y * 100}%`,
+              transform: "translate(-50%, -50%)",
             }}
           />
         ))}
       </div>
 
-      {/* PLAYER */}
-      <div style={{
-        position: "absolute",
-        top: "50%",
-        left: "50%",
-        width: 0,
-        height: 0,
-        borderLeft: "8px solid transparent",
-        borderRight: "8px solid transparent",
-        borderBottom: "16px solid red",
-        transform: "translate(-50%, -50%)",
-        zIndex: 10
-      }} />
+      {/* PLAYER ICON */}
+      <div
+        style={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          width: 0,
+          height: 0,
+          borderLeft: "8px solid transparent",
+          borderRight: "8px solid transparent",
+          borderBottom: "16px solid red",
+          transform: "translate(-50%, -50%)",
+          zIndex: 10,
+        }}
+      />
     </div>
   );
 }
+
+
 // ================= COMPASS =================
 function Compass({ heading }) {
   return (
