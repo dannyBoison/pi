@@ -129,11 +129,10 @@ function Ground({ planeRef, center }) {
 
 // ================= MINIMAP =================
 
-
 function Minimap({ planeRef, heading, center }) {
   const zoom = 14;
   const size = 180;
-  const tileSize = 60; // small tiles so they fit
+  const tileSize = 70;
 
   const [tiles, setTiles] = useState([]);
 
@@ -163,8 +162,9 @@ function Minimap({ planeRef, heading, center }) {
       const p = planeRef.current.position;
       const base = latLonToTile(center.lat, center.lon);
 
-      const offsetX = Math.floor(p.x / 120);
-      const offsetY = Math.floor(p.z / 120);
+      // smoother offset scaling (IMPORTANT FIX)
+      const offsetX = Math.round(p.x / 200);
+      const offsetY = Math.round(p.z / 200);
 
       const centerTile = {
         x: base.x + offsetX,
@@ -173,7 +173,6 @@ function Minimap({ planeRef, heading, center }) {
 
       const newTiles = [];
 
-     
       for (let i = -1; i <= 1; i++) {
         for (let j = -1; j <= 1; j++) {
           newTiles.push({
@@ -195,47 +194,55 @@ function Minimap({ planeRef, heading, center }) {
   }, [planeRef, center]);
 
   return (
-    <div style={{
-      position: "absolute",
-      bottom: 20,
-      left: 20,
-      width: size,
-      height: size,
-      borderRadius: "50%",
-      overflow: "hidden",
-      border: "3px solid white",
-      background: "#111",
-      zIndex: 100
-    }}>
-      {/* MAP */}
+    <div
+      style={{
+        position: "absolute",
+        bottom: 20,
+        left: 20,
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        overflow: "hidden",
+        border: "3px solid white",
+        background: "#111",
+        zIndex: 100,
+      }}
+    >
+      {/* ROTATION LAYER */}
       <div
         style={{
           position: "absolute",
           width: "100%",
           height: "100%",
-          transform: `rotate(${heading}rad)`,
+          transform: `rotate(${-heading}rad)`,
           transformOrigin: "center",
         }}
       >
-        {tiles.map((t) => (
-          <img
-            key={t.key}
-            src={t.url}
-            alt=""
-            onError={(e) => (e.target.style.display = "none")}
-            style={{
-              position: "absolute",
-              width: tileSize,
-              height: tileSize,
-              left: `50%`,
-              top: `50%`,
-              transform: `
-                translate(-50%, -50%)
-                translate(${t.x * tileSize}px, ${t.y * tileSize}px)
-              `,
-            }}
-          />
-        ))}
+        {/* CENTERED MAP LAYER */}
+        <div
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+          }}
+        >
+          {tiles.map((t) => (
+            <img
+              key={t.key}
+              src={t.url}
+              alt=""
+              style={{
+                position: "absolute",
+                width: tileSize,
+                height: tileSize,
+                transform: `
+                  translate(-50%, -50%)
+                  translate(${t.x * tileSize}px, ${t.y * tileSize}px)
+                `,
+              }}
+            />
+          ))}
+        </div>
       </div>
 
       {/* PLAYER ICON */}
