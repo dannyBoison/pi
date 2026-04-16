@@ -6,8 +6,6 @@ import * as THREE from "three";
 // ================= TILE =================
 function Tile({ url, position, size }) {
   const texture = useTexture(url);
-
-  // ✅ improve rendering quality
   texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
   texture.anisotropy = 16;
 
@@ -30,14 +28,9 @@ function Ground({ planeRef, center }) {
 
   const maxTile = Math.pow(2, zoom);
 
-  // ✅ FIX: normalize tile indices
   const normalizeTile = (x, y) => {
-    // wrap X (infinite world)
     x = ((x % maxTile) + maxTile) % maxTile;
-
-    // clamp Y (no negative / overflow)
     if (y < 0 || y >= maxTile) return null;
-
     return { x, y };
   };
 
@@ -89,7 +82,7 @@ function Ground({ planeRef, center }) {
   };
 
   const updateTiles = (planePos, baseTile) => {
-    const range = 7; // ✅ slightly increased for smoother loading
+    const range = 7;
 
     for (let i = -range; i <= range; i++) {
       for (let j = -range; j <= range; j++) {
@@ -98,7 +91,6 @@ function Ground({ planeRef, center }) {
     }
 
     removeFarTiles(planePos.x, planePos.z);
-
     setTiles(Array.from(tilesRef.current.values()));
   };
 
@@ -115,7 +107,6 @@ function Ground({ planeRef, center }) {
 
     const p = planeRef.current.position;
 
-    // movement → tile shift
     const moveX = Math.floor(p.x / tileSize);
     const moveZ = Math.floor(p.z / tileSize);
 
@@ -133,6 +124,67 @@ function Ground({ planeRef, center }) {
         <Tile key={tile.key} {...tile} size={tileSize} />
       ))}
     </group>
+  );
+}
+
+// ================= MINIMAP =================
+function Minimap({ planeRef, heading }) {
+  const mapRef = useRef();
+
+  useFrame(() => {
+    if (!planeRef.current || !mapRef.current) return;
+
+    const p = planeRef.current.position;
+
+    // move map opposite to plane (GTA effect)
+    mapRef.current.style.transform = `
+      translate(${-p.x * 0.5}px, ${-p.z * 0.5}px)
+      rotate(${heading}rad)
+    `;
+  });
+
+  return (
+    <div style={{
+      position: "absolute",
+      bottom: 20,
+      left: 20,
+      width: 180,
+      height: 180,
+      borderRadius: "50%",
+      overflow: "hidden",
+      border: "3px solid white",
+      background: "#000",
+      zIndex: 100
+    }}>
+      {/* Map layer */}
+      <div
+        ref={mapRef}
+        style={{
+          width: 600,
+          height: 600,
+          backgroundImage:
+            "url('https://tile.openstreetmap.org/14/8192/8192.png')",
+          backgroundSize: "cover",
+          position: "absolute",
+          top: "-200px",
+          left: "-200px"
+        }}
+      />
+
+      {/* Player arrow */}
+      <div style={{
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        width: 0,
+        height: 0,
+        borderLeft: "10px solid transparent",
+        borderRight: "10px solid transparent",
+        borderBottom: "18px solid red",
+        transform: "translate(-50%, -50%)",
+        zIndex: 10
+      }} />
+    </div>
   );
 }
 
@@ -189,7 +241,6 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
       const box = new THREE.Box3().setFromObject(model);
       const size = new THREE.Vector3();
       box.getSize(size);
-
       const scale = 2 / Math.max(size.x, size.y, size.z);
       model.scale.set(scale, scale, scale);
       model.rotation.y = Math.PI;
@@ -304,6 +355,7 @@ export default function FlightSimulation() {
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
 
       <Compass heading={heading} />
+      <Minimap planeRef={planeRef} heading={heading} />
 
       <div style={{
         position: "absolute",
@@ -319,7 +371,7 @@ export default function FlightSimulation() {
           <input
             value={city}
             onChange={(e) => setCity(e.target.value)}
-            placeholder="Search city (Accra, Kumasi, London)"
+            placeholder="Search city"
             style={{ padding: 8, marginRight: 5 }}
           />
           <button type="submit">Search</button>
