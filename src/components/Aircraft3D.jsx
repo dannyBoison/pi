@@ -128,29 +128,70 @@ function Ground({ planeRef, center }) {
 }
 
 // ================= MINIMAP =================
-function Minimap({ planeRef, heading }) {
-  const mapRef = useRef();
+function Minimap({ planeRef, heading, center }) {
+  const [tiles, setTiles] = useState([]);
+
+  const zoom = 14;
+  const tileSize = 256;
+
+  const maxTile = Math.pow(2, zoom);
+
+  const latLonToTile = (lat, lon) => {
+    const x = Math.floor(((lon + 180) / 360) * maxTile);
+    const y = Math.floor(
+      ((1 -
+        Math.log(
+          Math.tan((lat * Math.PI) / 180) +
+          1 / Math.cos((lat * Math.PI) / 180)
+        ) /
+        Math.PI) /
+        2) *
+        maxTile
+    );
+    return { x, y };
+  };
 
   useEffect(() => {
     let frame;
 
     const update = () => {
-      if (planeRef.current && mapRef.current) {
-        const p = planeRef.current.position;
+      if (!planeRef.current) return;
 
-        mapRef.current.style.transform = `
-          translate(${-p.x * 0.5}px, ${-p.z * 0.5}px)
-          rotate(${heading}rad)
-        `;
+      const p = planeRef.current.position;
+
+      // convert world → tile offset
+      const base = latLonToTile(center.lat, center.lon);
+
+      const offsetX = Math.floor(p.x / 120);
+      const offsetY = Math.floor(p.z / 120);
+
+      const tileX = base.x + offsetX;
+      const tileY = base.y + offsetY;
+
+      const newTiles = [];
+
+      for (let i = -1; i <= 1; i++) {
+        for (let j = -1; j <= 1; j++) {
+          const x = tileX + i;
+          const y = tileY + j;
+
+          newTiles.push({
+            key: `${x},${y}`,
+            url: `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`,
+            x: i,
+            y: j,
+          });
+        }
       }
+
+      setTiles(newTiles);
 
       frame = requestAnimationFrame(update);
     };
 
     update();
-
     return () => cancelAnimationFrame(frame);
-  }, [heading, planeRef]);
+  }, [planeRef, center]);
 
   return (
     <div style={{
@@ -165,31 +206,39 @@ function Minimap({ planeRef, heading }) {
       background: "#000",
       zIndex: 100
     }}>
-      {/* Map layer */}
-      <div
-        ref={mapRef}
-        style={{
-          width: 600,
-          height: 600,
-          backgroundImage:
-            "url('https://tile.openstreetmap.org/14/8192/8192.png')",
-          backgroundSize: "cover",
-          position: "absolute",
-          top: "-200px",
-          left: "-200px"
-        }}
-      />
+      {/* ROTATING MAP */}
+      <div style={{
+        position: "absolute",
+        width: "100%",
+        height: "100%",
+        transform: `rotate(${heading}rad)`,
+        transformOrigin: "center"
+      }}>
+        {tiles.map((tile) => (
+          <img
+            key={tile.key}
+            src={tile.url}
+            style={{
+              position: "absolute",
+              width: tileSize,
+              height: tileSize,
+              left: `calc(50% + ${tile.x * tileSize - tileSize / 2}px)`,
+              top: `calc(50% + ${tile.y * tileSize - tileSize / 2}px)`
+            }}
+          />
+        ))}
+      </div>
 
-      {/* Plane Arrow */}
+      {/* PLAYER (centered) */}
       <div style={{
         position: "absolute",
         top: "50%",
         left: "50%",
         width: 0,
         height: 0,
-        borderLeft: "10px solid transparent",
-        borderRight: "10px solid transparent",
-        borderBottom: "18px solid red",
+        borderLeft: "8px solid transparent",
+        borderRight: "8px solid transparent",
+        borderBottom: "16px solid red",
         transform: "translate(-50%, -50%)",
         zIndex: 10
       }} />
@@ -363,7 +412,7 @@ export default function FlightSimulation() {
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
 
       <Compass heading={heading} />
-      <Minimap planeRef={planeRef} heading={heading} />
+      <Minimap planeRef={planeRef} heading={heading} center={center} />
 
       <div style={{
         position: "absolute",
