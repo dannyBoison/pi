@@ -128,38 +128,50 @@ function Ground({ planeRef, center }) {
 }
 
 // ================= MINIMAP =================
-
 function Minimap({ planeRef, heading, center }) {
   const size = 180;
 
-  // ✅ ENV SAFE TOKEN
   const MAPBOX_TOKEN =
-    process.env.REACT_APP_MAPBOX_TOKEN ||
-    import.meta?.env?.VITE_MAPBOX_TOKEN;
+    import.meta?.env?.VITE_MAPBOX_TOKEN ||
+    process.env.REACT_APP_MAPBOX_TOKEN;
 
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(null);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
-    if (!MAPBOX_TOKEN) return;
+    if (!MAPBOX_TOKEN) {
+      console.error("❌ Missing Mapbox token");
+      setError(true);
+      return;
+    }
+
+    let frameId;
 
     const update = () => {
-      if (!planeRef.current) return;
+      if (!planeRef.current) {
+        frameId = requestAnimationFrame(update);
+        return;
+      }
 
       const p = planeRef.current.position;
 
-      const lon = center.lon + p.x * 0.0005;
-      const lat = center.lat + p.z * 0.0005;
+      const lon = center.lon + p.x * 0.0003;
+      const lat = center.lat + p.z * 0.0003;
 
-      // ✅ SINGLE STATIC IMAGE (NO TILE BUGS)
-      const newUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lon},${lat},14,0/300x300?access_token=${MAPBOX_TOKEN}`;
+      // IMPORTANT: keep zoom stable
+      const newUrl =
+        `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/` +
+        `${lon},${lat},14/300x300?access_token=${MAPBOX_TOKEN}`;
 
-      setUrl(newUrl);
+      setUrl((prev) => (prev !== newUrl ? newUrl : prev));
 
-      requestAnimationFrame(update);
+      frameId = requestAnimationFrame(update);
     };
 
     update();
-  }, [planeRef, center, MAPBOX_TOKEN]);
+
+    return () => cancelAnimationFrame(frameId);
+  }, [center, MAPBOX_TOKEN, planeRef]);
 
   return (
     <div
@@ -176,26 +188,29 @@ function Minimap({ planeRef, heading, center }) {
         zIndex: 100,
       }}
     >
-      {/* ROTATION */}
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          transform: `rotate(${-heading}rad)`,
-        }}
-      >
-        {url && (
-          <img
-            src={url}
-            alt="minimap"
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-            }}
-          />
-        )}
-      </div>
+      {/* MAP */}
+      {error ? (
+        <div style={{ color: "white", padding: 20 }}>
+          Map failed (check token)
+        </div>
+      ) : url ? (
+        <img
+          key={url}
+          src={url}
+          alt="minimap"
+          onError={() => setError(true)}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            transform: `rotate(${-heading}rad)`,
+          }}
+        />
+      ) : (
+        <div style={{ color: "white", padding: 20 }}>
+          Loading map...
+        </div>
+      )}
 
       {/* PLAYER ICON */}
       <div
