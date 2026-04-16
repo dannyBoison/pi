@@ -177,7 +177,7 @@ function Minimap({ planeRef, heading, center }) {
         for (let j = -1; j <= 1; j++) {
           newTiles.push({
             key: `${centerTile.x + i},${centerTile.y + j}`,
-            url: `https://tile.openstreetmap.org/${zoom}/${centerTile.x + i}/${centerTile.y + j}.png`,
+            url: `https://a.tile.openstreetmap.fr/hot/${zoom}/${centerTile.x + i}/${centerTile.y + j}.png`,
             x: i,
             y: j,
           });
