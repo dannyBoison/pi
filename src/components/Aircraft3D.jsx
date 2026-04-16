@@ -131,17 +131,26 @@ function Ground({ planeRef, center }) {
 function Minimap({ planeRef, heading }) {
   const mapRef = useRef();
 
-  useFrame(() => {
-    if (!planeRef.current || !mapRef.current) return;
+  useEffect(() => {
+    let frame;
 
-    const p = planeRef.current.position;
+    const update = () => {
+      if (planeRef.current && mapRef.current) {
+        const p = planeRef.current.position;
 
-    // move map opposite to plane (GTA effect)
-    mapRef.current.style.transform = `
-      translate(${-p.x * 0.5}px, ${-p.z * 0.5}px)
-      rotate(${heading}rad)
-    `;
-  });
+        mapRef.current.style.transform = `
+          translate(${-p.x * 0.5}px, ${-p.z * 0.5}px)
+          rotate(${heading}rad)
+        `;
+      }
+
+      frame = requestAnimationFrame(update);
+    };
+
+    update();
+
+    return () => cancelAnimationFrame(frame);
+  }, [heading, planeRef]);
 
   return (
     <div style={{
@@ -171,7 +180,7 @@ function Minimap({ planeRef, heading }) {
         }}
       />
 
-      {/* Player arrow */}
+      {/* Plane Arrow */}
       <div style={{
         position: "absolute",
         top: "50%",
@@ -187,7 +196,6 @@ function Minimap({ planeRef, heading }) {
     </div>
   );
 }
-
 // ================= COMPASS =================
 function Compass({ heading }) {
   return (
