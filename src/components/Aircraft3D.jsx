@@ -128,7 +128,7 @@ function Ground({ planeRef, center }) {
 }
 
 // ================= MINIMAP =================
-ONLY REPLACE YOUR MINIMAP WITH THIS
+
 function Minimap({ planeRef, heading, center }) {
   const size = 180;
 
