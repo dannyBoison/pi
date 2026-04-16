@@ -130,28 +130,27 @@ function Ground({ planeRef, center }) {
 // ================= MINIMAP =================
 
 
-
 function Minimap({ planeRef, heading, center }) {
-  const [tiles, setTiles] = useState([]);
-
   const zoom = 14;
-  const tileSize = 256; // OSM standard tile size
+  const size = 180;
+  const tileSize = 60; // small tiles so they fit
+
+  const [tiles, setTiles] = useState([]);
 
   const maxTile = Math.pow(2, zoom);
 
   const latLonToTile = (lat, lon) => {
     const x = Math.floor(((lon + 180) / 360) * maxTile);
-    const y =
-      Math.floor(
-        ((1 -
-          Math.log(
-            Math.tan((lat * Math.PI) / 180) +
-              1 / Math.cos((lat * Math.PI) / 180)
-          ) /
-            Math.PI) /
-          2) *
-          maxTile
-      );
+    const y = Math.floor(
+      ((1 -
+        Math.log(
+          Math.tan((lat * Math.PI) / 180) +
+          1 / Math.cos((lat * Math.PI) / 180)
+        ) /
+        Math.PI) /
+        2) *
+        maxTile
+    );
     return { x, y };
   };
 
@@ -174,6 +173,7 @@ function Minimap({ planeRef, heading, center }) {
 
       const newTiles = [];
 
+     
       for (let i = -1; i <= 1; i++) {
         for (let j = -1; j <= 1; j++) {
           newTiles.push({
@@ -186,6 +186,7 @@ function Minimap({ planeRef, heading, center }) {
       }
 
       setTiles(newTiles);
+
       frame = requestAnimationFrame(update);
     };
 
@@ -194,21 +195,19 @@ function Minimap({ planeRef, heading, center }) {
   }, [planeRef, center]);
 
   return (
-    <div
-      style={{
-        position: "absolute",
-        bottom: 20,
-        left: 20,
-        width: 180,
-        height: 180,
-        borderRadius: "50%",
-        overflow: "hidden",
-        border: "3px solid white",
-        background: "#111",
-        zIndex: 100,
-      }}
-    >
-      {/* MAP LAYER */}
+    <div style={{
+      position: "absolute",
+      bottom: 20,
+      left: 20,
+      width: size,
+      height: size,
+      borderRadius: "50%",
+      overflow: "hidden",
+      border: "3px solid white",
+      background: "#111",
+      zIndex: 100
+    }}>
+      {/* MAP */}
       <div
         style={{
           position: "absolute",
@@ -218,18 +217,22 @@ function Minimap({ planeRef, heading, center }) {
           transformOrigin: "center",
         }}
       >
-        {tiles.map((tile) => (
+        {tiles.map((t) => (
           <img
-            key={tile.key}
-            src={tile.url}
+            key={t.key}
+            src={t.url}
+            alt=""
             onError={(e) => (e.target.style.display = "none")}
             style={{
               position: "absolute",
-              width: "100%",
-              height: "100%",
-              left: `${tile.x * 100}%`,
-              top: `${tile.y * 100}%`,
-              transform: "translate(-50%, -50%)",
+              width: tileSize,
+              height: tileSize,
+              left: `50%`,
+              top: `50%`,
+              transform: `
+                translate(-50%, -50%)
+                translate(${t.x * tileSize}px, ${t.y * tileSize}px)
+              `,
             }}
           />
         ))}
@@ -243,9 +246,9 @@ function Minimap({ planeRef, heading, center }) {
           left: "50%",
           width: 0,
           height: 0,
-          borderLeft: "8px solid transparent",
-          borderRight: "8px solid transparent",
-          borderBottom: "16px solid red",
+          borderLeft: "7px solid transparent",
+          borderRight: "7px solid transparent",
+          borderBottom: "14px solid red",
           transform: "translate(-50%, -50%)",
           zIndex: 10,
         }}
