@@ -136,41 +136,42 @@ function Minimap({ planeRef, heading, center }) {
     process.env.REACT_APP_MAPBOX_TOKEN;
 
   const [url, setUrl] = useState(null);
-  const [error, setError] = useState(false);
+
+  // store last position so we don't spam updates
+  const lastPos = useRef({ x: null, z: null });
 
   useEffect(() => {
-    if (!MAPBOX_TOKEN) {
-      console.error("❌ Missing Mapbox token");
-      setError(true);
-      return;
-    }
+    if (!MAPBOX_TOKEN) return;
 
-    let frameId;
+    const interval = setInterval(() => {
+      if (!planeRef.current) return;
 
-    const update = () => {
-      if (!planeRef.current) {
-        frameId = requestAnimationFrame(update);
+      const p = planeRef.current.position;
+
+      // throttle updates (IMPORTANT FIX)
+      const snappedX = Math.floor(p.x / 10);
+      const snappedZ = Math.floor(p.z / 10);
+
+      if (
+        snappedX === lastPos.current.x &&
+        snappedZ === lastPos.current.z
+      ) {
         return;
       }
 
-      const p = planeRef.current.position;
+      lastPos.current = { x: snappedX, z: snappedZ };
 
       const lon = center.lon + p.x * 0.0003;
       const lat = center.lat + p.z * 0.0003;
 
-      // IMPORTANT: keep zoom stable
       const newUrl =
         `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/` +
         `${lon},${lat},14/300x300?access_token=${MAPBOX_TOKEN}`;
 
-      setUrl((prev) => (prev !== newUrl ? newUrl : prev));
+      setUrl(newUrl);
+    }, 300); // 🔥 IMPORTANT: not every frame
 
-      frameId = requestAnimationFrame(update);
-    };
-
-    update();
-
-    return () => cancelAnimationFrame(frameId);
+    return () => clearInterval(interval);
   }, [center, MAPBOX_TOKEN, planeRef]);
 
   return (
@@ -188,17 +189,10 @@ function Minimap({ planeRef, heading, center }) {
         zIndex: 100,
       }}
     >
-      {/* MAP */}
-      {error ? (
-        <div style={{ color: "white", padding: 20 }}>
-          Map failed (check token)
-        </div>
-      ) : url ? (
+      {url ? (
         <img
-          key={url}
           src={url}
           alt="minimap"
-          onError={() => setError(true)}
           style={{
             width: "100%",
             height: "100%",
