@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import Header from "./components/Header";
 import Home from "./components/Home";
-import "mapbox-gl/dist/mapbox-gl.css";
+
 import MapPanel from "./components/MapPanel";
 import FlightStatus from "./components/FlightStatus";
 import DecisionTool from "./components/DecisionTool";
