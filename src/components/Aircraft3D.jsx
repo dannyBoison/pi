@@ -384,6 +384,7 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
 });
 
 // ================= MAIN =================
+// ================= MAIN =================
 export default function FlightSimulation() {
   const [stats, setStats] = useState({ speed: 0, altitude: 0 });
   const [heading, setHeading] = useState(0);
@@ -396,6 +397,28 @@ export default function FlightSimulation() {
   });
 
   const [suggestions, setSuggestions] = useState([]);
+
+  // ✅ NEW: dynamic speed control
+  const [speed, setSpeed] = useState(0.12);
+  const speedRef = useRef(speed);
+
+  useEffect(() => {
+    speedRef.current = speed;
+  }, [speed]);
+
+  useEffect(() => {
+    const handleKeys = (e) => {
+      if (e.key === "Shift") {
+        setSpeed((s) => Math.min(s + 0.02, 1)); // increase
+      }
+      if (e.key === "Control") {
+        setSpeed((s) => Math.max(s - 0.02, 0.02)); // decrease
+      }
+    };
+
+    window.addEventListener("keydown", handleKeys);
+    return () => window.removeEventListener("keydown", handleKeys);
+  }, []);
 
   const handleInputChange = async (value) => {
     setCity(value);
@@ -515,6 +538,10 @@ export default function FlightSimulation() {
 
         <p>Speed: {stats.speed}</p>
         <p>Altitude: {stats.altitude}</p>
+
+        {/* ✅ NEW UI indicator */}
+        <p>Control Speed:</p>
+        <p>Shift = Faster | Ctrl = Slower</p>
       </div>
 
       <Canvas camera={{ position: [0, 4, 10], fov: 60 }}>
@@ -527,7 +554,7 @@ export default function FlightSimulation() {
 
         <Suspense fallback={null}>
           <Plane
-            speed={0.12}
+            speed={speed} // ✅ dynamic now
             setStats={setStats}
             setHeading={setHeading}
             ref={planeRef}
