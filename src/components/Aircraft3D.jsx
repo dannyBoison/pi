@@ -360,6 +360,51 @@ export default function FlightSimulation() {
     lon: -0.1870,
   });
 
+  // 🔥 ADDED
+  const [suggestions, setSuggestions] = useState([]);
+
+  // 🔥 ADDED
+  const handleInputChange = async (value) => {
+    setCity(value);
+
+    if (value.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${value}&addressdetails=1&limit=5`
+      );
+      const data = await res.json();
+
+      const formatted = data.map((place) => ({
+        name: `${place.name || value}, ${place.address?.country || ""}`,
+        lat: parseFloat(place.lat),
+        lon: parseFloat(place.lon),
+      }));
+
+      setSuggestions(formatted);
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
+  // 🔥 ADDED
+  const handleSelect = (place) => {
+    setCity(place.name);
+    setSuggestions([]);
+
+    setCenter({
+      lat: place.lat,
+      lon: place.lon,
+    });
+
+    if (planeRef.current) {
+      planeRef.current.position.set(0, 3, 0);
+    }
+  };
+
   const handleSearch = async (e) => {
     e.preventDefault();
     if (!city) return;
@@ -405,12 +450,39 @@ export default function FlightSimulation() {
         <form onSubmit={handleSearch}>
           <input
             value={city}
-            onChange={(e) => setCity(e.target.value)}
+            // 🔥 CHANGED (only this line)
+            onChange={(e) => handleInputChange(e.target.value)}
             placeholder="Search city"
             style={{ padding: 8, marginRight: 5 }}
           />
           <button type="submit">Search</button>
         </form>
+
+        {/* 🔥 ADDED DROPDOWN */}
+        {suggestions.length > 0 && (
+          <div style={{
+            background: "white",
+            color: "black",
+            borderRadius: 5,
+            marginTop: 5,
+            maxHeight: 150,
+            overflowY: "auto"
+          }}>
+            {suggestions.map((s, index) => (
+              <div
+                key={index}
+                onClick={() => handleSelect(s)}
+                style={{
+                  padding: 8,
+                  cursor: "pointer",
+                  borderBottom: "1px solid #ddd"
+                }}
+              >
+                {s.name}
+              </div>
+            ))}
+          </div>
+        )}
 
         <p>Speed: {stats.speed}</p>
         <p>Altitude: {stats.altitude}</p>
