@@ -1,3 +1,4 @@
+🔥 FULL CODE (ALL FIXES + REAL BUILDINGS)
 import React, { useRef, useState, useEffect, Suspense, useMemo } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import mapboxgl from "mapbox-gl";
@@ -6,6 +7,7 @@ import * as THREE from "three";
 
 // ================= TEXTURE CACHE =================
 const textureCache = new Map();
+
 function getTexture(url) {
   if (textureCache.has(url)) return textureCache.get(url);
   const tex = new THREE.TextureLoader().load(url);
@@ -17,7 +19,7 @@ function getTexture(url) {
 
 // ================= BUILDING CACHE =================
 const buildingCache = new Map();
-const BUILDING_LIMIT = 40; // 🔥 limit per tile
+const BUILDING_LIMIT = 40;
 
 async function fetchBuildings(x, y, zoom) {
   const key = `${x},${y},${zoom}`;
@@ -28,8 +30,12 @@ async function fetchBuildings(x, y, zoom) {
   const lon1 = (x / n) * 360 - 180;
   const lon2 = ((x + 1) / n) * 360 - 180;
 
-  const lat1 = (180 / Math.PI) * Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n)));
-  const lat2 = (180 / Math.PI) * Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 1)) / n)));
+  const lat1 =
+    (180 / Math.PI) *
+    Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n)));
+  const lat2 =
+    (180 / Math.PI) *
+    Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 1)) / n)));
 
   const url = `https://overpass-api.de/api/interpreter?data=
   [out:json];
@@ -40,16 +46,17 @@ async function fetchBuildings(x, y, zoom) {
     const res = await fetch(url);
     const data = await res.json();
 
-    const sliced = data.elements.slice(0, BUILDING_LIMIT); // 🔥 LIMIT
+    const sliced = data.elements.slice(0, BUILDING_LIMIT);
     buildingCache.set(key, sliced);
     return sliced;
-  } catch {
+  } catch (err) {
+    console.log("Building fetch error:", err);
     return [];
   }
 }
 
-// ================= BUILDING MESH =================
-function createBuilding(way, center) {
+// ================= BUILDING CREATION =================
+function createBuildingMesh(way, center) {
   if (!way.geometry) return null;
 
   const shape = new THREE.Shape();
@@ -69,16 +76,16 @@ function createBuilding(way, center) {
       ? parseFloat(way.tags["building:levels"]) * 3
       : 8 + Math.random() * 10;
 
-  const geo = new THREE.ExtrudeGeometry(shape, {
+  const geometry = new THREE.ExtrudeGeometry(shape, {
     depth: height,
     bevelEnabled: false,
   });
 
-  const mat = new THREE.MeshStandardMaterial({
+  const material = new THREE.MeshStandardMaterial({
     color: "#888",
   });
 
-  const mesh = new THREE.Mesh(geo, mat);
+  const mesh = new THREE.Mesh(geometry, material);
   mesh.rotation.x = -Math.PI / 2;
 
   return mesh;
@@ -103,7 +110,7 @@ function Ground({ planeRef, center }) {
 
   const groupRef = useRef();
   const tilesRef = useRef(new Map());
-  const buildingGroup = useRef(new Map());
+  const buildingRef = useRef(new Map());
 
   const dirtyRef = useRef(false);
   const lastUpdateRef = useRef(0);
@@ -121,7 +128,14 @@ function Ground({ planeRef, center }) {
   const latLonToTile = (lat, lon) => {
     const x = Math.floor(((lon + 180) / 360) * maxTile);
     const y = Math.floor(
-      ((1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2) * maxTile
+      ((1 -
+        Math.log(
+          Math.tan((lat * Math.PI) / 180) +
+          1 / Math.cos((lat * Math.PI) / 180)
+        ) /
+        Math.PI) /
+        2) *
+        maxTile
     );
     return { x, y };
   };
@@ -140,23 +154,23 @@ function Ground({ planeRef, center }) {
       key,
       x: normalized.x,
       y: normalized.y,
-      position: [worldX, 0, worldZ],
       url: `https://tile.openstreetmap.org/${zoom}/${normalized.x}/${normalized.y}.png`,
+      position: [worldX, 0, worldZ],
     });
 
     dirtyRef.current = true;
   };
 
-  const removeFar = (planeX, planeZ) => {
-    const maxDist = tileSize * 10;
+  const removeFarTiles = (planeX, planeZ) => {
+    const maxDistance = tileSize * 10;
 
     tilesRef.current.forEach((tile, key) => {
       const dx = tile.position[0] - planeX;
       const dz = tile.position[2] - planeZ;
 
-      if (Math.abs(dx) > maxDist || Math.abs(dz) > maxDist) {
+      if (Math.abs(dx) > maxDistance || Math.abs(dz) > maxDistance) {
         tilesRef.current.delete(key);
-        buildingGroup.current.delete(key); // 🔥 remove buildings too
+        buildingRef.current.delete(key); // 🔥 remove buildings too
         dirtyRef.current = true;
       }
     });
@@ -171,7 +185,7 @@ function Ground({ planeRef, center }) {
       }
     }
 
-    removeFar(planePos.x, planePos.z);
+    removeFarTiles(planePos.x, planePos.z);
   };
 
   const baseTileRef = useRef({ x: 0, y: 0 });
@@ -180,7 +194,7 @@ function Ground({ planeRef, center }) {
     const t = latLonToTile(center.lat, center.lon);
     baseTileRef.current = t;
     tilesRef.current.clear();
-    buildingGroup.current.clear();
+    buildingRef.current.clear();
     dirtyRef.current = true;
   }, [center]);
 
@@ -203,21 +217,28 @@ function Ground({ planeRef, center }) {
 
     updateTiles(p, baseTile);
 
-    // 🔥 LOAD BUILDINGS PER TILE
+    // 🔥 BUILDINGS LOAD (safe + cached)
     for (const tile of tilesRef.current.values()) {
-      if (buildingGroup.current.has(tile.key)) continue;
+      if (buildingRef.current.has(tile.key)) continue;
 
-      const data = await fetchBuildings(tile.x, tile.y, zoom);
+      fetchBuildings(tile.x, tile.y, zoom).then((data) => {
+        const meshes = data
+          .map((way) => {
+            const mesh = createBuildingMesh(way, center);
+            if (!mesh) return null;
 
-      const meshes = data.map((way) => {
-        const m = createBuilding(way, center);
-        if (!m) return null;
+            mesh.position.set(
+              tile.position[0],
+              0,
+              tile.position[2]
+            );
 
-        m.position.set(tile.position[0], 0, tile.position[2]);
-        return m;
-      }).filter(Boolean);
+            return mesh;
+          })
+          .filter(Boolean);
 
-      buildingGroup.current.set(tile.key, meshes);
+        buildingRef.current.set(tile.key, meshes);
+      });
     }
 
     if (dirtyRef.current) {
@@ -227,36 +248,112 @@ function Ground({ planeRef, center }) {
   });
 
   return (
-    <group>
+    <group ref={groupRef}>
       {tiles.map((tile) => (
         <Tile key={tile.key} {...tile} size={tileSize} />
       ))}
 
-      {/* 🔥 BUILDINGS */}
-      {[...buildingGroup.current.values()].flat().map((mesh, i) => (
+      {[...buildingRef.current.values()].flat().map((mesh, i) => (
         <primitive object={mesh} key={i} />
       ))}
     </group>
   );
 }
 
+// ================= MINIMAP =================
+function Minimap({ planeRef, heading, center }) {
+  const mapContainer = useRef(null);
+  const mapRef = useRef(null);
+  const planeMarker = useRef(null);
+
+  mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
+
+  useEffect(() => {
+    if (mapRef.current) return;
+
+    mapRef.current = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: "mapbox://styles/mapbox/satellite-v9",
+      center: [center.lon, center.lat],
+      zoom: 14,
+      interactive: false,
+    });
+
+    const el = document.createElement("div");
+    el.style.borderLeft = "7px solid transparent";
+    el.style.borderRight = "7px solid transparent";
+    el.style.borderBottom = "14px solid red";
+
+    planeMarker.current = new mapboxgl.Marker(el)
+      .setLngLat([center.lon, center.lat])
+      .addTo(mapRef.current);
+  }, []);
+
+  useFrame(() => {
+    if (!planeRef.current || !mapRef.current) return;
+
+    const p = planeRef.current.position;
+
+    const lon = center.lon + p.x * 0.0003;
+    const lat = center.lat + p.z * 0.0003;
+
+    mapRef.current.setCenter([lon, lat]);
+    planeMarker.current.setLngLat([lon, lat]);
+    mapRef.current.setBearing(-heading * (180 / Math.PI));
+  });
+
+  return (
+    <div
+      ref={mapContainer}
+      style={{
+        position: "absolute",
+        bottom: 20,
+        left: 20,
+        width: 180,
+        height: 180,
+        borderRadius: "50%",
+        overflow: "hidden",
+        border: "3px solid white",
+      }}
+    />
+  );
+}
+
+// ================= COMPASS =================
+function Compass({ heading }) {
+  return (
+    <div style={{
+      position: "absolute",
+      top: 20,
+      left: "50%",
+      transform: "translateX(-50%)",
+      width: 120,
+      height: 120,
+      borderRadius: "50%",
+      background: "#000000cc",
+      color: "white",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center"
+    }}>
+      <div style={{ transform: `rotate(${-heading}rad)` }}>N</div>
+    </div>
+  );
+}
+
 // ================= PLANE =================
-const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
+const Plane = React.forwardRef(({ speed, setStats, setHeading }, ref) => {
   const { camera } = useThree();
 
   const velocity = useRef(new THREE.Vector3(0, 0, -speed));
   const rotation = useRef({ pitch: 0, yaw: 0 });
-
   const keys = useRef({});
-  const lastUI = useRef(0);
 
   useEffect(() => {
     const down = (e) => (keys.current[e.key.toLowerCase()] = true);
     const up = (e) => (keys.current[e.key.toLowerCase()] = false);
-
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
-
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
@@ -264,7 +361,7 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
   }, []);
 
   useFrame(() => {
-    const p = planeRef.current;
+    const p = ref.current;
     if (!p) return;
 
     if (keys.current["a"]) rotation.current.yaw += 0.01;
@@ -285,21 +382,16 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
     camera.position.lerp(p.position.clone().add(camOffset), 0.08);
     camera.lookAt(p.position);
 
-    const now = performance.now();
-    if (now - lastUI.current > 200) {
-      lastUI.current = now;
+    setStats({
+      speed: speed.toFixed(2),
+      altitude: p.position.y.toFixed(1),
+    });
 
-      setStats({
-        speed: speed.toFixed(2),
-        altitude: p.position.y.toFixed(1),
-      });
-
-      setHeading(rotation.current.yaw);
-    }
+    setHeading(rotation.current.yaw);
   });
 
   return (
-    <mesh ref={planeRef} position={[0, 3, 0]}>
+    <mesh ref={ref} position={[0, 3, 0]}>
       <coneGeometry args={[0.5, 2, 8]} />
       <meshStandardMaterial color="red" />
     </mesh>
@@ -318,21 +410,26 @@ export default function FlightSimulation() {
   });
 
   return (
-    <div style={{ width: "100vw", height: "100vh" }}>
+    <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
+      <Compass heading={heading} />
+      <Minimap planeRef={planeRef} heading={heading} center={center} />
+
       <Canvas camera={{ position: [0, 4, 10], fov: 60 }}>
         <color attach="background" args={["#87CEEB"]} />
         <ambientLight intensity={0.6} />
         <directionalLight position={[100, 100, 50]} intensity={2} />
-        <Sky />
+        <Sky sunPosition={[100, 20, 100]} />
 
         <Ground planeRef={planeRef} center={center} />
 
-        <Plane
-          speed={0.12}
-          setStats={setStats}
-          setHeading={setHeading}
-          ref={planeRef}
-        />
+        <Suspense fallback={null}>
+          <Plane
+            speed={0.12}
+            setStats={setStats}
+            setHeading={setHeading}
+            ref={planeRef}
+          />
+        </Suspense>
       </Canvas>
     </div>
   );
