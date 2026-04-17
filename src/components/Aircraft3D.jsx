@@ -11,18 +11,42 @@ function getTexture(url) {
   if (textureCache.has(url)) return textureCache.get(url);
   const tex = new THREE.TextureLoader().load(url);
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-  tex.anisotropy = 4; // 🔥 reduced for performance
+  tex.anisotropy = 4;
   textureCache.set(url, tex);
   return tex;
 }
 
+// ================= HEIGHT CACHE (NEW) =================
+const heightCache = new Map();
+
+async function getHeight(lat, lon) {
+  const key = `${lat.toFixed(3)},${lon.toFixed(3)}`;
+  if (heightCache.has(key)) return heightCache.get(key);
+
+  try {
+    const res = await fetch(
+      `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lon}`
+    );
+    const data = await res.json();
+    const h = data.results[0].elevation || 0;
+
+    heightCache.set(key, h);
+    return h;
+  } catch {
+    return 0;
+  }
+}
+
 // ================= TILE =================
-function Tile({ url, position, size }) {
+function Tile({ url, position, size, elevation = 0 }) {
   const texture = useMemo(() => getTexture(url), [url]);
 
   return (
-    <mesh position={position} rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[size, size]} />
+    <mesh
+      position={[position[0], elevation * 0.05, position[2]]}
+      rotation={[-Math.PI / 2, 0, 0]}
+    >
+      <planeGeometry args={[size, size, 10, 10]} />
       <meshStandardMaterial map={texture} />
     </mesh>
   );
@@ -63,7 +87,7 @@ function Ground({ planeRef, center }) {
     return { x, y };
   };
 
-  const addTile = (x, y, baseX, baseY) => {
+  const addTile = async (x, y, baseX, baseY) => {
     const normalized = normalizeTile(x, y);
     if (!normalized) return;
 
@@ -73,10 +97,20 @@ function Ground({ planeRef, center }) {
     const worldX = (x - baseX) * tileSize;
     const worldZ = (y - baseY) * tileSize;
 
+    // 🌍 convert tile → lat/lon
+    const n = Math.pow(2, zoom);
+    const lon = (normalized.x / n) * 360 - 180;
+    const lat =
+      (Math.atan(Math.sinh(Math.PI * (1 - 2 * normalized.y / n))) * 180) /
+      Math.PI;
+
+    const elevation = await getHeight(lat, lon);
+
     tilesRef.current.set(key, {
       key,
       url: `https://tile.openstreetmap.org/${zoom}/${normalized.x}/${normalized.y}.png`,
       position: [worldX, 0, worldZ],
+      elevation,
     });
 
     dirtyRef.current = true;
@@ -122,7 +156,6 @@ function Ground({ planeRef, center }) {
 
     const now = clock.elapsedTime;
 
-    // 🔥 throttle tile updates (0.5s)
     if (now - lastUpdateRef.current < 0.5) return;
     lastUpdateRef.current = now;
 
@@ -147,393 +180,8 @@ function Ground({ planeRef, center }) {
   return (
     <group ref={groupRef}>
       {tiles.map((tile) => (
-        <Tile key={tile.key} {...tile} size={tileSize} />
+        <Tile key={tile.key} {...tile} size={tileSize} elevation={tile.elevation} />
       ))}
     </group>
-  );
-}
-
-// ================= MINIMAP =================
-function Minimap({ planeRef, heading, center }) {
-  const mapContainer = useRef(null);
-  const mapRef = useRef(null);
-  const planeMarker = useRef(null);
-
-  mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
-
-  const centerRef = useRef(center);
-  const headingRef = useRef(heading);
-
-  useEffect(() => {
-    centerRef.current = center;
-  }, [center]);
-
-  useEffect(() => {
-    headingRef.current = heading;
-  }, [heading]);
-
-  useEffect(() => {
-    if (mapRef.current) return;
-
-    mapRef.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: "mapbox://styles/mapbox/satellite-v9",
-      center: [center.lon, center.lat],
-      zoom: 14,
-      pitch: 0,
-      interactive: false,
-    });
-
-    const el = document.createElement("div");
-    el.style.width = "0";
-    el.style.height = "0";
-    el.style.borderLeft = "7px solid transparent";
-    el.style.borderRight = "7px solid transparent";
-    el.style.borderBottom = "14px solid red";
-
-    planeMarker.current = new mapboxgl.Marker(el)
-      .setLngLat([center.lon, center.lat])
-      .addTo(mapRef.current);
-  }, []);
-
-  useEffect(() => {
-    if (!mapRef.current || !planeRef.current) return;
-
-    let frameId;
-    let last = 0;
-
-    const update = (t) => {
-      if (t - last > 50) { // 🔥 20fps throttle
-        last = t;
-
-        const p = planeRef.current.position;
-        const c = centerRef.current;
-
-        const lon = c.lon + p.x * 0.0003;
-        const lat = c.lat + p.z * 0.0003;
-
-        mapRef.current.setCenter([lon, lat]);
-        planeMarker.current?.setLngLat([lon, lat]);
-
-        mapRef.current.setBearing(
-          -headingRef.current * (180 / Math.PI)
-        );
-      }
-
-      frameId = requestAnimationFrame(update);
-    };
-
-    update(0);
-
-    return () => cancelAnimationFrame(frameId);
-  }, []);
-
-  return (
-    <div
-      ref={mapContainer}
-      style={{
-        position: "absolute",
-        bottom: 20,
-        left: 20,
-        width: 180,
-        height: 180,
-        borderRadius: "50%",
-        overflow: "hidden",
-        border: "3px solid white",
-        zIndex: 100,
-      }}
-    />
-  );
-}
-
-// ================= COMPASS =================
-function Compass({ heading }) {
-  return (
-    <div style={{
-      position: "absolute",
-      top: 20,
-      left: "50%",
-      transform: "translateX(-50%)",
-      width: 120,
-      height: 120,
-      borderRadius: "50%",
-      background: "#000000cc",
-      color: "white",
-      zIndex: 100,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontWeight: "bold"
-    }}>
-      <div style={{
-        position: "relative",
-        transform: `rotate(${-heading}rad)`,
-        transition: "transform 0.1s linear"
-      }}>
-        N
-        <div style={{ position: "absolute", right: -40, top: 0 }}>E</div>
-        <div style={{ position: "absolute", bottom: -40, left: 0 }}>S</div>
-        <div style={{ position: "absolute", left: -40, top: 0 }}>W</div>
-      </div>
-    </div>
-  );
-}
-
-// ================= PLANE =================
-const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
-  const { camera } = useThree();
-
-  let model;
-  try {
-    model = useGLTF("/models/product.glb").scene;
-  } catch {
-    model = null;
-  }
-
-  const velocity = useRef(new THREE.Vector3(0, 0, -speed));
-  const rotation = useRef({ pitch: 0, yaw: 0, roll: 0 });
-  const keys = useRef({});
-
-  const statsRef = useRef({ speed: 0, altitude: 0 });
-  const headingRef = useRef(0);
-  const lastUIUpdate = useRef(0);
-
-  useEffect(() => {
-    if (model) {
-      const box = new THREE.Box3().setFromObject(model);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      const scale = 2 / Math.max(size.x, size.y, size.z);
-      model.scale.set(scale, scale, scale);
-      model.rotation.y = Math.PI;
-    }
-  }, [model]);
-
-  useEffect(() => {
-    const down = (e) => (keys.current[e.key.toLowerCase()] = true);
-    const up = (e) => (keys.current[e.key.toLowerCase()] = false);
-
-    window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
-
-    return () => {
-      window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
-    };
-  }, []);
-
-  useFrame(() => {
-    const p = planeRef.current;
-    if (!p) return;
-
-    if (keys.current["a"]) rotation.current.yaw += 0.01;
-    if (keys.current["d"]) rotation.current.yaw -= 0.01;
-    if (keys.current["w"]) rotation.current.pitch += 0.008;
-    if (keys.current["s"]) rotation.current.pitch -= 0.008;
-
-    p.rotation.set(
-      rotation.current.pitch,
-      rotation.current.yaw,
-      rotation.current.roll
-    );
-
-    const forward = new THREE.Vector3(0, 0, -1).applyEuler(p.rotation);
-    forward.multiplyScalar(speed);
-
-    velocity.current.lerp(forward, 0.05);
-    p.position.add(velocity.current);
-
-    headingRef.current = rotation.current.yaw;
-
-    const camOffset = new THREE.Vector3(0, 4, 10);
-    camOffset.applyEuler(p.rotation);
-
-    camera.position.lerp(
-      p.position.clone().add(camOffset),
-      0.08
-    );
-
-    camera.lookAt(p.position.clone().add(new THREE.Vector3(0, 1, 0)));
-
-    // 🔥 throttle UI updates (5fps)
-    const now = performance.now();
-    if (now - lastUIUpdate.current > 200) {
-      lastUIUpdate.current = now;
-
-      setStats({
-        speed: speed.toFixed(2),
-        altitude: p.position.y.toFixed(1),
-      });
-
-      setHeading(rotation.current.yaw);
-    }
-  });
-
-  return (
-    <group ref={planeRef} position={[0, 3, 0]}>
-      {model ? (
-        <primitive object={model} />
-      ) : (
-        <mesh>
-          <coneGeometry args={[0.5, 2, 8]} />
-          <meshStandardMaterial color="red" />
-        </mesh>
-      )}
-    </group>
-  );
-});
-
-// ================= MAIN =================
-export default function FlightSimulation() {
-  const [stats, setStats] = useState({ speed: 0, altitude: 0 });
-  const [heading, setHeading] = useState(0);
-  const planeRef = useRef();
-
-  const [city, setCity] = useState("");
-  const [center, setCenter] = useState({
-    lat: 5.6037,
-    lon: -0.1870,
-  });
-
-  const [suggestions, setSuggestions] = useState([]);
-
-  const handleInputChange = async (value) => {
-    setCity(value);
-
-    if (value.length < 2) {
-      setSuggestions([]);
-      return;
-    }
-
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${value}&addressdetails=1&limit=5`
-      );
-      const data = await res.json();
-
-      const formatted = data.map((place) => ({
-        name: `${place.name || value}, ${place.address?.country || ""}`,
-        lat: parseFloat(place.lat),
-        lon: parseFloat(place.lon),
-      }));
-
-      setSuggestions(formatted);
-    } catch (err) {
-      console.log(err);
-    }
-  };
-
-  const handleSelect = (place) => {
-    setCity(place.name);
-    setSuggestions([]);
-
-    setCenter({
-      lat: place.lat,
-      lon: place.lon,
-    });
-
-    if (planeRef.current) {
-      planeRef.current.position.set(0, 3, 0);
-    }
-  };
-
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!city) return;
-
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${city}`
-      );
-      const data = await res.json();
-
-      if (!data.length) return alert("City not found");
-
-      setCenter({
-        lat: parseFloat(data[0].lat),
-        lon: parseFloat(data[0].lon),
-      });
-
-      if (planeRef.current) {
-        planeRef.current.position.set(0, 3, 0);
-      }
-
-    } catch {
-      alert("Search failed");
-    }
-  };
-
-  return (
-    <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
-      <Compass heading={heading} />
-      <Minimap planeRef={planeRef} heading={heading} center={center} />
-
-      <div style={{
-        position: "absolute",
-        top: 20,
-        left: 20,
-        zIndex: 100,
-        background: "#000000cc",
-        padding: 15,
-        borderRadius: 10,
-        color: "white"
-      }}>
-        <form onSubmit={handleSearch}>
-          <input
-            value={city}
-            onChange={(e) => handleInputChange(e.target.value)}
-            placeholder="Search city"
-            style={{ padding: 8, marginRight: 5 }}
-          />
-          <button type="submit">Search</button>
-        </form>
-
-        {suggestions.length > 0 && (
-          <div style={{
-            background: "white",
-            color: "black",
-            borderRadius: 5,
-            marginTop: 5,
-            maxHeight: 150,
-            overflowY: "auto"
-          }}>
-            {suggestions.map((s, index) => (
-              <div
-                key={index}
-                onClick={() => handleSelect(s)}
-                style={{
-                  padding: 8,
-                  cursor: "pointer",
-                  borderBottom: "1px solid #ddd"
-                }}
-              >
-                {s.name}
-              </div>
-            ))}
-          </div>
-        )}
-
-        <p>Speed: {stats.speed}</p>
-        <p>Altitude: {stats.altitude}</p>
-      </div>
-
-      <Canvas camera={{ position: [0, 4, 10], fov: 60 }}>
-        <color attach="background" args={["#87CEEB"]} />
-        <ambientLight intensity={0.6} />
-        <directionalLight position={[100, 100, 50]} intensity={2} />
-        <Sky sunPosition={[100, 20, 100]} />
-
-        <Ground planeRef={planeRef} center={center} />
-
-        <Suspense fallback={null}>
-          <Plane
-            speed={0.12}
-            setStats={setStats}
-            setHeading={setHeading}
-            ref={planeRef}
-          />
-        </Suspense>
-      </Canvas>
-    </div>
   );
 }
