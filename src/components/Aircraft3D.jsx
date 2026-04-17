@@ -279,8 +279,20 @@ function Compass({ heading }) {
   );
 }
 
+
+// ================= NAVIGATION =================
+function worldToLatLon(x, z, center) {
+  const scale = 0.0001;
+  return {
+    lat: center.lat + z * scale,
+    lon: center.lon + x * scale,
+  };
+}
+
+
+
 // ================= PLANE =================
-const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
+const Plane = React.forwardRef(({ speed, setStats, setHeading, center, destination }, planeRef) => {
   const { camera } = useThree();
 
   let model;
@@ -331,11 +343,39 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
     if (keys.current["w"]) rotation.current.pitch += 0.008;
     if (keys.current["s"]) rotation.current.pitch -= 0.008;
 
+    
+
     p.rotation.set(
       rotation.current.pitch,
       rotation.current.yaw,
       rotation.current.roll
     );
+
+
+
+    // ✈️ AUTOPILOT NAVIGATION
+if (destination && center) {
+  const scale = 0.0001;
+
+  const currentLat = center.lat + p.position.z * scale;
+  const currentLon = center.lon + p.position.x * scale;
+
+  const dx = destination.lon - currentLon;
+  const dz = destination.lat - currentLat;
+
+  const targetAngle = Math.atan2(dx, dz);
+
+  // smooth turning
+  rotation.current.yaw += (targetAngle - rotation.current.yaw) * 0.02;
+
+  const distance = Math.sqrt(dx * dx + dz * dz);
+
+  if (distance < 0.001) {
+    console.log("Arrived at destination");
+  }
+}
+
+    
 
     const forward = new THREE.Vector3(0, 0, -1).applyEuler(p.rotation);
     forward.multiplyScalar(speed);
@@ -396,7 +436,7 @@ export default function FlightSimulation() {
     lon: -0.1870,
   });
 
-  const [suggestions, setSuggestions] = useState([]);
+ const [destination, setDestination] = useState(null);
 
   // ✅ NEW: dynamic speed control
   const [speed, setSpeed] = useState(0.12);
@@ -446,19 +486,16 @@ export default function FlightSimulation() {
     }
   };
 
-  const handleSelect = (place) => {
-    setCity(place.name);
-    setSuggestions([]);
+const handleSelect = (place) => {
+  setCity(place.name);
+  setSuggestions([]);
 
-    setCenter({
-      lat: place.lat,
-      lon: place.lon,
-    });
-
-    if (planeRef.current) {
-      planeRef.current.position.set(0, 3, 0);
-    }
-  };
+  // ✈️ set destination instead of teleport
+  setDestination({
+    lat: place.lat,
+    lon: place.lon,
+  });
+};
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -553,12 +590,14 @@ export default function FlightSimulation() {
         <Ground planeRef={planeRef} center={center} />
 
         <Suspense fallback={null}>
-          <Plane
-            speed={speed} // ✅ dynamic now
-            setStats={setStats}
-            setHeading={setHeading}
-            ref={planeRef}
-          />
+       <Plane
+  speed={speed}
+  setStats={setStats}
+  setHeading={setHeading}
+  center={center}
+  destination={destination}
+  ref={planeRef}
+/>
         </Suspense>
       </Canvas>
     </div>
