@@ -353,10 +353,11 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading, center, destinati
 
 
 
-    // ✈️ AUTOPILOT NAVIGATION
-if (destination && center) {
+// ✈️ AUTOPILOT (FIXED + STABLE)
+if (destination) {
   const scale = 0.0001;
 
+  // convert plane world position → pseudo lat/lon
   const currentLat = center.lat + p.position.z * scale;
   const currentLon = center.lon + p.position.x * scale;
 
@@ -366,19 +367,28 @@ if (destination && center) {
   const targetAngle = Math.atan2(dx, dz);
 
   // smooth turning
-  rotation.current.yaw += (targetAngle - rotation.current.yaw) * 0.02;
+  rotation.current.yaw += (targetAngle - rotation.current.yaw) * 0.05;
+
+  // move forward stronger when autopilot is active
+  const forwardBoost = 1.2;
 
   const distance = Math.sqrt(dx * dx + dz * dz);
 
-  if (distance < 0.001) {
-    console.log("Arrived at destination");
+  // stop condition (prevents infinite drift)
+  if (distance < 0.0008) {
+    velocity.current.set(0, 0, 0);
+    return;
   }
+
+  // optional: log progress
+  // console.log("Distance:", distance);
 }
 
     
 
     const forward = new THREE.Vector3(0, 0, -1).applyEuler(p.rotation);
-    forward.multiplyScalar(speed);
+    const autoMultiplier = destination ? 1.5 : 1;
+forward.multiplyScalar(speed * autoMultiplier);
 
     velocity.current.lerp(forward, 0.05);
     p.position.add(velocity.current);
@@ -423,7 +433,7 @@ if (destination && center) {
   );
 });
 
-// ================= MAIN =================
+
 // ================= MAIN =================
 export default function FlightSimulation() {
   const [stats, setStats] = useState({ speed: 0, altitude: 0 });
@@ -431,10 +441,14 @@ export default function FlightSimulation() {
   const planeRef = useRef();
 
   const [city, setCity] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
   const [center, setCenter] = useState({
     lat: 5.6037,
     lon: -0.1870,
   });
+
+  
+
 
  const [destination, setDestination] = useState(null);
 
