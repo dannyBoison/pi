@@ -279,20 +279,8 @@ function Compass({ heading }) {
   );
 }
 
-
-// ================= NAVIGATION =================
-function worldToLatLon(x, z, center) {
-  const scale = 0.0001;
-  return {
-    lat: center.lat + z * scale,
-    lon: center.lon + x * scale,
-  };
-}
-
-
-
 // ================= PLANE =================
-const Plane = React.forwardRef(({ speed, setStats, setHeading, center, destination }, planeRef) => {
+const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
   const { camera } = useThree();
 
   let model;
@@ -343,52 +331,14 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading, center, destinati
     if (keys.current["w"]) rotation.current.pitch += 0.008;
     if (keys.current["s"]) rotation.current.pitch -= 0.008;
 
-    
-
     p.rotation.set(
       rotation.current.pitch,
       rotation.current.yaw,
       rotation.current.roll
     );
 
-
-
-// ✈️ AUTOPILOT (FIXED + STABLE)
-if (destination) {
-  const scale = 0.0001;
-
-  // convert plane world position → pseudo lat/lon
-  const currentLat = center.lat + p.position.z * scale;
-  const currentLon = center.lon + p.position.x * scale;
-
-  const dx = destination.lon - currentLon;
-  const dz = destination.lat - currentLat;
-
-  const targetAngle = Math.atan2(dx, dz);
-
-  // smooth turning
-  rotation.current.yaw += (targetAngle - rotation.current.yaw) * 0.05;
-
-  // move forward stronger when autopilot is active
-  const forwardBoost = 1.2;
-
-  const distance = Math.sqrt(dx * dx + dz * dz);
-
-  // stop condition (prevents infinite drift)
-  if (distance < 0.0008) {
-    velocity.current.set(0, 0, 0);
-    return;
-  }
-
-  // optional: log progress
-  // console.log("Distance:", distance);
-}
-
-    
-
     const forward = new THREE.Vector3(0, 0, -1).applyEuler(p.rotation);
-    const autoMultiplier = destination ? 1.5 : 1;
-forward.multiplyScalar(speed * autoMultiplier);
+    forward.multiplyScalar(speed);
 
     velocity.current.lerp(forward, 0.05);
     p.position.add(velocity.current);
@@ -433,7 +383,7 @@ forward.multiplyScalar(speed * autoMultiplier);
   );
 });
 
-
+// ================= MAIN =================
 // ================= MAIN =================
 export default function FlightSimulation() {
   const [stats, setStats] = useState({ speed: 0, altitude: 0 });
@@ -441,16 +391,12 @@ export default function FlightSimulation() {
   const planeRef = useRef();
 
   const [city, setCity] = useState("");
-  const [suggestions, setSuggestions] = useState([]);
   const [center, setCenter] = useState({
     lat: 5.6037,
     lon: -0.1870,
   });
 
-  
-
-
- const [destination, setDestination] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
 
   // ✅ NEW: dynamic speed control
   const [speed, setSpeed] = useState(0.12);
@@ -500,16 +446,19 @@ export default function FlightSimulation() {
     }
   };
 
-const handleSelect = (place) => {
-  setCity(place.name);
-  setSuggestions([]);
+  const handleSelect = (place) => {
+    setCity(place.name);
+    setSuggestions([]);
 
-  // ✈️ set destination instead of teleport
-  setDestination({
-    lat: place.lat,
-    lon: place.lon,
-  });
-};
+    setCenter({
+      lat: place.lat,
+      lon: place.lon,
+    });
+
+    if (planeRef.current) {
+      planeRef.current.position.set(0, 3, 0);
+    }
+  };
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -604,14 +553,12 @@ const handleSelect = (place) => {
         <Ground planeRef={planeRef} center={center} />
 
         <Suspense fallback={null}>
-       <Plane
-  speed={speed}
-  setStats={setStats}
-  setHeading={setHeading}
-  center={center}
-  destination={destination}
-  ref={planeRef}
-/>
+          <Plane
+            speed={speed} // ✅ dynamic now
+            setStats={setStats}
+            setHeading={setHeading}
+            ref={planeRef}
+          />
         </Suspense>
       </Canvas>
     </div>
