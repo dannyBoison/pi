@@ -1,14 +1,24 @@
-import React, { useRef, useState, useEffect, Suspense } from "react";
+import React, { useRef, useState, useEffect, Suspense, useMemo } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import mapboxgl from "mapbox-gl";
 import { Sky, useGLTF, useTexture } from "@react-three/drei";
 import * as THREE from "three";
-ttew4365llllllvcx'
+
+// ================= TEXTURE CACHE =================
+const textureCache = new Map();
+
+function getTexture(url) {
+  if (textureCache.has(url)) return textureCache.get(url);
+  const tex = new THREE.TextureLoader().load(url);
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.anisotropy = 4; // 🔥 reduced for performance
+  textureCache.set(url, tex);
+  return tex;
+}
+
 // ================= TILE =================
 function Tile({ url, position, size }) {
-  const texture = useTexture(url);
-  texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
-  texture.anisotropy = 16;
+  const texture = useMemo(() => getTexture(url), [url]);
 
   return (
     <mesh position={position} rotation={[-Math.PI / 2, 0, 0]}>
@@ -25,6 +35,9 @@ function Ground({ planeRef, center }) {
 
   const groupRef = useRef();
   const tilesRef = useRef(new Map());
+  const dirtyRef = useRef(false);
+  const lastUpdateRef = useRef(0);
+
   const [tiles, setTiles] = useState([]);
 
   const maxTile = Math.pow(2, zoom);
@@ -60,13 +73,13 @@ function Ground({ planeRef, center }) {
     const worldX = (x - baseX) * tileSize;
     const worldZ = (y - baseY) * tileSize;
 
-    const tile = {
+    tilesRef.current.set(key, {
       key,
       url: `https://tile.openstreetmap.org/${zoom}/${normalized.x}/${normalized.y}.png`,
       position: [worldX, 0, worldZ],
-    };
+    });
 
-    tilesRef.current.set(key, tile);
+    dirtyRef.current = true;
   };
 
   const removeFarTiles = (planeX, planeZ) => {
@@ -78,6 +91,7 @@ function Ground({ planeRef, center }) {
 
       if (Math.abs(dx) > maxDistance || Math.abs(dz) > maxDistance) {
         tilesRef.current.delete(key);
+        dirtyRef.current = true;
       }
     });
   };
@@ -92,7 +106,6 @@ function Ground({ planeRef, center }) {
     }
 
     removeFarTiles(planePos.x, planePos.z);
-    setTiles(Array.from(tilesRef.current.values()));
   };
 
   const baseTileRef = useRef({ x: 0, y: 0 });
@@ -101,10 +114,17 @@ function Ground({ planeRef, center }) {
     const t = latLonToTile(center.lat, center.lon);
     baseTileRef.current = t;
     tilesRef.current.clear();
+    dirtyRef.current = true;
   }, [center]);
 
-  useFrame(() => {
+  useFrame(({ clock }) => {
     if (!planeRef.current || !groupRef.current) return;
+
+    const now = clock.elapsedTime;
+
+    // 🔥 throttle tile updates (0.5s)
+    if (now - lastUpdateRef.current < 0.5) return;
+    lastUpdateRef.current = now;
 
     const p = planeRef.current.position;
 
@@ -117,6 +137,11 @@ function Ground({ planeRef, center }) {
     };
 
     updateTiles(p, baseTile);
+
+    if (dirtyRef.current) {
+      dirtyRef.current = false;
+      setTiles(Array.from(tilesRef.current.values()));
+    }
   });
 
   return (
@@ -136,7 +161,6 @@ function Minimap({ planeRef, heading, center }) {
 
   mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
-  // 🔥 keep latest values without restarting loop
   const centerRef = useRef(center);
   const headingRef = useRef(heading);
 
@@ -148,7 +172,6 @@ function Minimap({ planeRef, heading, center }) {
     headingRef.current = heading;
   }, [heading]);
 
-  // ================= INIT MAP ONCE =================
   useEffect(() => {
     if (mapRef.current) return;
 
@@ -161,7 +184,6 @@ function Minimap({ planeRef, heading, center }) {
       interactive: false,
     });
 
-    // player marker
     const el = document.createElement("div");
     el.style.width = "0";
     el.style.height = "0";
@@ -174,34 +196,34 @@ function Minimap({ planeRef, heading, center }) {
       .addTo(mapRef.current);
   }, []);
 
-  // ================= UPDATE LOOP (RUNS ONCE) =================
   useEffect(() => {
     if (!mapRef.current || !planeRef.current) return;
 
     let frameId;
+    let last = 0;
 
-    const update = () => {
-      const p = planeRef.current.position;
-      const c = centerRef.current;
+    const update = (t) => {
+      if (t - last > 50) { // 🔥 20fps throttle
+        last = t;
 
-      const lon = c.lon + p.x * 0.0003;
-      const lat = c.lat + p.z * 0.0003;
+        const p = planeRef.current.position;
+        const c = centerRef.current;
 
-      // move map smoothly
-      mapRef.current.setCenter([lon, lat]);
+        const lon = c.lon + p.x * 0.0003;
+        const lat = c.lat + p.z * 0.0003;
 
-      // move player marker
-      planeMarker.current?.setLngLat([lon, lat]);
+        mapRef.current.setCenter([lon, lat]);
+        planeMarker.current?.setLngLat([lon, lat]);
 
-      // 🧭 rotation sync (fixed)
-      mapRef.current.setBearing(
-        -headingRef.current * (180 / Math.PI)
-      );
+        mapRef.current.setBearing(
+          -headingRef.current * (180 / Math.PI)
+        );
+      }
 
       frameId = requestAnimationFrame(update);
     };
 
-    update();
+    update(0);
 
     return () => cancelAnimationFrame(frameId);
   }, []);
@@ -223,6 +245,7 @@ function Minimap({ planeRef, heading, center }) {
     />
   );
 }
+
 // ================= COMPASS =================
 function Compass({ heading }) {
   return (
@@ -271,6 +294,10 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
   const rotation = useRef({ pitch: 0, yaw: 0, roll: 0 });
   const keys = useRef({});
 
+  const statsRef = useRef({ speed: 0, altitude: 0 });
+  const headingRef = useRef(0);
+  const lastUIUpdate = useRef(0);
+
   useEffect(() => {
     if (model) {
       const box = new THREE.Box3().setFromObject(model);
@@ -316,7 +343,7 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
     velocity.current.lerp(forward, 0.05);
     p.position.add(velocity.current);
 
-    setHeading(rotation.current.yaw);
+    headingRef.current = rotation.current.yaw;
 
     const camOffset = new THREE.Vector3(0, 4, 10);
     camOffset.applyEuler(p.rotation);
@@ -328,10 +355,18 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
 
     camera.lookAt(p.position.clone().add(new THREE.Vector3(0, 1, 0)));
 
-    setStats({
-      speed: speed.toFixed(2),
-      altitude: p.position.y.toFixed(1),
-    });
+    // 🔥 throttle UI updates (5fps)
+    const now = performance.now();
+    if (now - lastUIUpdate.current > 200) {
+      lastUIUpdate.current = now;
+
+      setStats({
+        speed: speed.toFixed(2),
+        altitude: p.position.y.toFixed(1),
+      });
+
+      setHeading(rotation.current.yaw);
+    }
   });
 
   return (
@@ -359,6 +394,48 @@ export default function FlightSimulation() {
     lat: 5.6037,
     lon: -0.1870,
   });
+
+  const [suggestions, setSuggestions] = useState([]);
+
+  const handleInputChange = async (value) => {
+    setCity(value);
+
+    if (value.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${value}&addressdetails=1&limit=5`
+      );
+      const data = await res.json();
+
+      const formatted = data.map((place) => ({
+        name: `${place.name || value}, ${place.address?.country || ""}`,
+        lat: parseFloat(place.lat),
+        lon: parseFloat(place.lon),
+      }));
+
+      setSuggestions(formatted);
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
+  const handleSelect = (place) => {
+    setCity(place.name);
+    setSuggestions([]);
+
+    setCenter({
+      lat: place.lat,
+      lon: place.lon,
+    });
+
+    if (planeRef.current) {
+      planeRef.current.position.set(0, 3, 0);
+    }
+  };
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -388,7 +465,6 @@ export default function FlightSimulation() {
 
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
-
       <Compass heading={heading} />
       <Minimap planeRef={planeRef} heading={heading} center={center} />
 
@@ -405,12 +481,37 @@ export default function FlightSimulation() {
         <form onSubmit={handleSearch}>
           <input
             value={city}
-            onChange={(e) => setCity(e.target.value)}
+            onChange={(e) => handleInputChange(e.target.value)}
             placeholder="Search city"
             style={{ padding: 8, marginRight: 5 }}
           />
           <button type="submit">Search</button>
         </form>
+
+        {suggestions.length > 0 && (
+          <div style={{
+            background: "white",
+            color: "black",
+            borderRadius: 5,
+            marginTop: 5,
+            maxHeight: 150,
+            overflowY: "auto"
+          }}>
+            {suggestions.map((s, index) => (
+              <div
+                key={index}
+                onClick={() => handleSelect(s)}
+                style={{
+                  padding: 8,
+                  cursor: "pointer",
+                  borderBottom: "1px solid #ddd"
+                }}
+              >
+                {s.name}
+              </div>
+            ))}
+          </div>
+        )}
 
         <p>Speed: {stats.speed}</p>
         <p>Altitude: {stats.altitude}</p>
