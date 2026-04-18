@@ -110,6 +110,29 @@ function Ground({ planeRef, center }) {
 
   const baseTileRef = useRef({ x: 0, y: 0 });
 
+  
+
+  useEffect(() => {
+  if (!planeRef.current) return;
+
+  const p = planeRef.current.position;
+
+  const moveX = Math.floor(p.x / tileSize);
+  const moveZ = Math.floor(p.z / tileSize);
+
+  const baseTile = {
+    x: baseTileRef.current.x + moveX,
+    y: baseTileRef.current.y + moveZ,
+  };
+
+  updateTiles(p, baseTile);
+
+  setTiles(Array.from(tilesRef.current.values()));
+}, []);
+
+
+  
+
   useEffect(() => {
     const t = latLonToTile(center.lat, center.lon);
     baseTileRef.current = t;
@@ -355,7 +378,8 @@ const Plane = React.forwardRef(
       );
 
       forward.multiplyScalar(speed);
-   p.position.lerp(target, 0.01);
+   const dir = target.clone().sub(p.position).normalize();
+p.position.add(dir.multiplyScalar(speed));
 
       // stop when reached destination
       if (p.position.distanceTo(target) < 10) {
@@ -557,7 +581,8 @@ const targetRef = useRef(null);
     }
   };
 
-  const startJourney = () => {
+  const startJourney = () => { 
+    if (!selectedRoute?.from || !selectedRoute?.to) return;
   const from = selectedRoute.from;
   const to = selectedRoute.to;
 
@@ -578,96 +603,97 @@ const targetRef = useRef(null);
 };
 
   return (
-    <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
-      <Compass heading={heading} />
-      <Minimap planeRef={planeRef} heading={heading} center={center} />
+   <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
+  <Compass heading={heading} />
+  <Minimap planeRef={planeRef} heading={heading} center={center} />
 
+  {/* ✅ MOVED PANEL DOWN */}
+  <div style={{
+    position: "absolute",
+    bottom: 20,
+    left: 20,
+    top: "auto",
+    zIndex: 100,
+    background: "#000000cc",
+    padding: 15,
+    borderRadius: 10,
+    color: "white"
+  }}>
+    <form onSubmit={handleSearch}>
+      <input
+        value={city}
+        onChange={(e) => handleInputChange(e.target.value)}
+        placeholder="Search city"
+        style={{ padding: 8, marginRight: 5 }}
+      />
+      <button type="submit">Search</button>
+    </form>
+
+    {suggestions.length > 0 && (
       <div style={{
-        position: "absolute",
-        top: 20,
-        left: 20,
-        zIndex: 100,
-        background: "#000000cc",
-        padding: 15,
-        borderRadius: 10,
-        color: "white"
+        background: "white",
+        color: "black",
+        borderRadius: 5,
+        marginTop: 5,
+        maxHeight: 150,
+        overflowY: "auto"
       }}>
-        <form onSubmit={handleSearch}>
-          <input
-            value={city}
-            onChange={(e) => handleInputChange(e.target.value)}
-            placeholder="Search city"
-            style={{ padding: 8, marginRight: 5 }}
-          />
-          <button type="submit">Search</button>
-        </form>
-
-        {suggestions.length > 0 && (
-          <div style={{
-            background: "white",
-            color: "black",
-            borderRadius: 5,
-            marginTop: 5,
-            maxHeight: 150,
-            overflowY: "auto"
-          }}>
-            {suggestions.map((s, index) => (
-              <div
-                key={index}
-                onClick={() => handleSelect(s)}
-                style={{
-                  padding: 8,
-                  cursor: "pointer",
-                  borderBottom: "1px solid #ddd"
-                }}
-              >
-                {s.name}
-              </div>
-            ))}
+        {suggestions.map((s, index) => (
+          <div
+            key={index}
+            onClick={() => handleSelect(s)}
+            style={{
+              padding: 8,
+              cursor: "pointer",
+              borderBottom: "1px solid #ddd"
+            }}
+          >
+            {s.name}
           </div>
-        )}
-
-        <p>Speed: {stats.speed}</p>
-        <p>Altitude: {stats.altitude}</p>
-
-        {/* ✅ NEW UI indicator */}
-        <p>Control Speed:</p>
-        <p>Shift = Faster | Ctrl = Slower</p>
+        ))}
       </div>
+    )}
 
+    <p>Speed: {stats.speed}</p>
+    <p>Altitude: {stats.altitude}</p>
 
+    {/* ✅ NEW UI indicator */}
+    <p>Control Speed:</p>
+    <p>Shift = Faster | Ctrl = Slower</p>
+  </div>
 
-      <hr />
+  <hr />
 
-<select
-  value={selectedRoute.name}
-  onChange={(e) =>
-    setSelectedRoute(
-      ROUTES.find((r) => r.name === e.target.value)
-    )
-  }
-  style={{ padding: 6, marginTop: 10 }}
->
-  {ROUTES.map((r) => (
-    <option key={r.name}>{r.name}</option>
-  ))}
-</select>
+  <select
+    value={selectedRoute.name}
+    onChange={(e) =>
+      setSelectedRoute(
+        ROUTES.find((r) => r.name === e.target.value)
+      )
+    }
+    style={{ padding: 6, marginTop: 10 }}
+  >
+    {ROUTES.map((r) => (
+      <option key={r.name}>{r.name}</option>
+    ))}
+  </select>
 
-<button
-  onClick={startJourney}
-  style={{
-    marginTop: 10,
-    padding: 8,
-    background: "limegreen",
-    color: "black",
-    border: "none",
-    cursor: "pointer",
-    width: "100%",
-    fontWeight: "bold",
-  }}
->
-  Start Journey ✈️
-</button>
+  <button
+    onClick={startJourney}
+    style={{
+      marginTop: 10,
+      padding: 8,
+      background: "limegreen",
+      color: "black",
+      border: "none",
+      cursor: "pointer",
+      width: "100%",
+      fontWeight: "bold",
+    }}
+  >
+    Start Journey ✈️
+  </button>
+</div>
 
 <p>
   Mode:{" "}
