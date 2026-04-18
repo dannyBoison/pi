@@ -532,27 +532,6 @@ const targetRef = useRef(null);
     e.preventDefault();
     if (!city) return;
 
-    const startJourney = () => {
-  const from = selectedRoute.from;
-  const to = selectedRoute.to;
-
-  // move map center to start
-  setCenter(from);
-
-  if (planeRef.current) {
-    planeRef.current.position.set(0, 3, 0);
-  }
-
-  // convert lat/lon difference into world movement target
-  const scale = 0.0003;
-
-  targetRef.current = {
-    x: (to.lon - from.lon) / scale,
-    z: (to.lat - from.lat) / scale,
-  };
-
-  setAutopilot(true);
-};
     
 
     try {
@@ -576,6 +555,26 @@ const targetRef = useRef(null);
       alert("Search failed");
     }
   };
+
+  const startJourney = () => {
+  const from = selectedRoute.from;
+  const to = selectedRoute.to;
+
+  setCenter(from);
+
+  if (planeRef.current) {
+    planeRef.current.position.set(0, 3, 0);
+  }
+
+  const scale = 0.0003;
+
+  targetRef.current = {
+    x: (to.lon - from.lon) / scale,
+    z: (to.lat - from.lat) / scale,
+  };
+
+  setAutopilot(true);
+};
 
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
