@@ -29,7 +29,6 @@ function Tile({ url, position, size }) {
 }
 
 // ================= GROUND =================
-// ================= GROUND =================
 function Ground({ planeRef, center }) {
   const zoom = 14;
   const tileSize = 120;
@@ -55,9 +54,9 @@ function Ground({ planeRef, center }) {
       ((1 -
         Math.log(
           Math.tan((lat * Math.PI) / 180) +
-            1 / Math.cos((lat * Math.PI) / 180)
+          1 / Math.cos((lat * Math.PI) / 180)
         ) /
-          Math.PI) /
+        Math.PI) /
         2) *
         maxTile
     );
@@ -115,12 +114,15 @@ function Ground({ planeRef, center }) {
     const t = latLonToTile(center.lat, center.lon);
     baseTileRef.current = t;
     tilesRef.current.clear();
+    dirtyRef.current = true;
   }, [center]);
 
   useFrame(({ clock }) => {
     if (!planeRef.current || !groupRef.current) return;
 
     const now = clock.elapsedTime;
+
+    // 🔥 throttle tile updates (0.5s)
     if (now - lastUpdateRef.current < 0.5) return;
     lastUpdateRef.current = now;
 
@@ -138,7 +140,7 @@ function Ground({ planeRef, center }) {
 
     if (dirtyRef.current) {
       dirtyRef.current = false;
-      setTiles([...tilesRef.current.values()]);
+      setTiles(Array.from(tilesRef.current.values()));
     }
   });
 
@@ -278,132 +280,108 @@ function Compass({ heading }) {
 }
 
 // ================= PLANE =================
-const Plane = React.forwardRef(
-  ({ speed, setStats, setHeading, autopilot, targetRef, setAutopilot }, ref) => {
-    const { camera } = useThree();
+const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
+  const { camera } = useThree();
 
-    let model;
-    try {
-      model = useGLTF("/models/product.glb").scene;
-    } catch {
-      model = null;
-    }
-
-    const velocity = useRef(new THREE.Vector3());
-    const rotation = useRef({ pitch: 0, yaw: 0, roll: 0 });
-    const keys = useRef({});
-    const lastUI = useRef(0);
-
-    useEffect(() => {
-      const down = (e) => (keys.current[e.key.toLowerCase()] = true);
-      const up = (e) => (keys.current[e.key.toLowerCase()] = false);
-
-      window.addEventListener("keydown", down);
-      window.addEventListener("keyup", up);
-
-      return () => {
-        window.removeEventListener("keydown", down);
-        window.removeEventListener("keyup", up);
-      };
-    }, []);
-
-    useFrame(() => {
-      const p = ref.current;
-      if (!p) return;
-
-      // ================= AUTOPILOT =================
-      if (autopilot && targetRef.current) {
-        const target = new THREE.Vector3(
-          targetRef.current.x,
-          p.position.y,
-          targetRef.current.z
-        );
-
-        const dirVec = target.clone().sub(p.position).normalize();
-        const targetYaw = Math.atan2(dirVec.x, dirVec.z);
-
-        rotation.current.yaw = THREE.MathUtils.lerp(
-          rotation.current.yaw,
-          targetYaw,
-          0.03
-        );
-
-        p.position.add(dirVec.multiplyScalar(speed));
-
-        if (p.position.distanceTo(target) < 10) {
-          setAutopilot(false);
-        }
-
-        return;
-      }
-
-      if (keys.current["a"]) rotation.current.yaw += 0.01;
-      if (keys.current["d"]) rotation.current.yaw -= 0.01;
-
-      p.rotation.set(
-        rotation.current.pitch,
-        rotation.current.yaw,
-        rotation.current.roll
-      );
-
-      const forward = new THREE.Vector3(0, 0, -1).applyEuler(p.rotation);
-      forward.multiplyScalar(speed);
-
-      velocity.current.lerp(forward, 0.05);
-      p.position.add(velocity.current);
-
-      const now = performance.now();
-      if (now - lastUI > 200) {
-        lastUI.current = now;
-
-        setStats({
-          speed: speed.toFixed(2),
-          altitude: p.position.y.toFixed(1),
-        });
-
-        setHeading(rotation.current.yaw);
-      }
-
-      const camOffset = new THREE.Vector3(0, 4, 10).applyEuler(p.rotation);
-      camera.position.lerp(p.position.clone().add(camOffset), 0.08);
-      camera.lookAt(p.position);
-    });
-
-    return (
-      <group ref={ref} position={[0, 3, 0]}>
-        {model ? (
-          <primitive object={model} />
-        ) : (
-          <mesh>
-            <coneGeometry args={[0.5, 2, 8]} />
-            <meshStandardMaterial color="red" />
-          </mesh>
-        )}
-      </group>
-    );
+  let model;
+  try {
+    model = useGLTF("/models/product.glb").scene;
+  } catch {
+    model = null;
   }
-);
 
-const ROUTES = [
-  {
-    name: "Accra → Kumasi Airport",
-    from: { lat: 5.605186, lon: -0.166786 },
-    to: { lat: 6.71456, lon: -1.59082 },
-  },
-  {
-    name: "Accra → Takoradi Airport",
-    from: { lat: 5.605186, lon: -0.166786 },
-    to: { lat: 4.896, lon: -1.774 },
-  },
-  {
-    name: "Kumasi → Accra",
-    from: { lat: 6.71456, lon: -1.59082 },
-    to: { lat: 5.605186, lon: -0.166786 },
-  },
-];
+  const velocity = useRef(new THREE.Vector3(0, 0, -speed));
+  const rotation = useRef({ pitch: 0, yaw: 0, roll: 0 });
+  const keys = useRef({});
 
+  const statsRef = useRef({ speed: 0, altitude: 0 });
+  const headingRef = useRef(0);
+  const lastUIUpdate = useRef(0);
 
+  useEffect(() => {
+    if (model) {
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const scale = 2 / Math.max(size.x, size.y, size.z);
+      model.scale.set(scale, scale, scale);
+      model.rotation.y = Math.PI;
+    }
+  }, [model]);
 
+  useEffect(() => {
+    const down = (e) => (keys.current[e.key.toLowerCase()] = true);
+    const up = (e) => (keys.current[e.key.toLowerCase()] = false);
+
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }, []);
+
+  useFrame(() => {
+    const p = planeRef.current;
+    if (!p) return;
+
+    if (keys.current["a"]) rotation.current.yaw += 0.01;
+    if (keys.current["d"]) rotation.current.yaw -= 0.01;
+    if (keys.current["w"]) rotation.current.pitch += 0.008;
+    if (keys.current["s"]) rotation.current.pitch -= 0.008;
+
+    p.rotation.set(
+      rotation.current.pitch,
+      rotation.current.yaw,
+      rotation.current.roll
+    );
+
+    const forward = new THREE.Vector3(0, 0, -1).applyEuler(p.rotation);
+    forward.multiplyScalar(speed);
+
+    velocity.current.lerp(forward, 0.05);
+    p.position.add(velocity.current);
+
+    headingRef.current = rotation.current.yaw;
+
+    const camOffset = new THREE.Vector3(0, 4, 10);
+    camOffset.applyEuler(p.rotation);
+
+    camera.position.lerp(
+      p.position.clone().add(camOffset),
+      0.08
+    );
+
+    camera.lookAt(p.position.clone().add(new THREE.Vector3(0, 1, 0)));
+
+    // 🔥 throttle UI updates (5fps)
+    const now = performance.now();
+    if (now - lastUIUpdate.current > 200) {
+      lastUIUpdate.current = now;
+
+      setStats({
+        speed: speed.toFixed(2),
+        altitude: p.position.y.toFixed(1),
+      });
+
+      setHeading(rotation.current.yaw);
+    }
+  });
+
+  return (
+    <group ref={planeRef} position={[0, 3, 0]}>
+      {model ? (
+        <primitive object={model} />
+      ) : (
+        <mesh>
+          <coneGeometry args={[0.5, 2, 8]} />
+          <meshStandardMaterial color="red" />
+        </mesh>
+      )}
+    </group>
+  );
+});
 
 // ================= MAIN =================
 // ================= MAIN =================
@@ -411,15 +389,12 @@ export default function FlightSimulation() {
   const [stats, setStats] = useState({ speed: 0, altitude: 0 });
   const [heading, setHeading] = useState(0);
   const planeRef = useRef();
+
   const [city, setCity] = useState("");
   const [center, setCenter] = useState({
     lat: 5.6037,
     lon: -0.1870,
   });
-
-  const [selectedRoute, setSelectedRoute] = useState(ROUTES[0]);
-const [autopilot, setAutopilot] = useState(false);
-const targetRef = useRef(null);
 
   const [suggestions, setSuggestions] = useState([]);
 
@@ -489,8 +464,6 @@ const targetRef = useRef(null);
     e.preventDefault();
     if (!city) return;
 
-    
-
     try {
       const res = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${city}`
@@ -513,114 +486,63 @@ const targetRef = useRef(null);
     }
   };
 
-  const startJourney = () => { 
-    if (!selectedRoute?.from || !selectedRoute?.to) return;
-  const from = selectedRoute.from;
-  const to = selectedRoute.to;
-
-  setCenter(from);
-
-  if (planeRef.current) {
-    planeRef.current.position.set(0, 3, 0);
-  }
-
-  const scale = 0.0003;
-
-  targetRef.current = {
-    x: (to.lon - from.lon) / scale,
-    z: (to.lat - from.lat) / scale,
-  };
-
-  setAutopilot(true);
-};
-
   return (
-   <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
-  <Compass heading={heading} />
-  <Minimap planeRef={planeRef} heading={heading} center={center} />
+    <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
+      <Compass heading={heading} />
+      <Minimap planeRef={planeRef} heading={heading} center={center} />
 
-  {/* ✅ MOVED PANEL DOWN */}
-  <div style={{
-    position: "absolute",
-    bottom: 20,
-    left: 20,
-    top: "auto",
-    zIndex: 100,
-    background: "#000000cc",
-    padding: 15,
-    borderRadius: 10,
-    color: "white"
-  }}>
-    <form onSubmit={handleSearch}>
-      <input
-        value={city}
-        onChange={(e) => handleInputChange(e.target.value)}
-        placeholder="Search city"
-        style={{ padding: 8, marginRight: 5 }}
-      />
-      <button type="submit">Search</button>
-    </form>
-
-    {suggestions.length > 0 && (
       <div style={{
-        background: "white",
-        color: "black",
-        borderRadius: 5,
-        marginTop: 5,
-        maxHeight: 150,
-        overflowY: "auto"
+        position: "absolute",
+        top: 20,
+        left: 20,
+        zIndex: 100,
+        background: "#000000cc",
+        padding: 15,
+        borderRadius: 10,
+        color: "white"
       }}>
-        {suggestions.map((s, index) => (
-          <div
-            key={index}
-            onClick={() => handleSelect(s)}
-            style={{
-              padding: 8,
-              cursor: "pointer",
-              borderBottom: "1px solid #ddd"
-            }}
-          >
-            {s.name}
+        <form onSubmit={handleSearch}>
+          <input
+            value={city}
+            onChange={(e) => handleInputChange(e.target.value)}
+            placeholder="Search city"
+            style={{ padding: 8, marginRight: 5 }}
+          />
+          <button type="submit">Search</button>
+        </form>
+
+        {suggestions.length > 0 && (
+          <div style={{
+            background: "white",
+            color: "black",
+            borderRadius: 5,
+            marginTop: 5,
+            maxHeight: 150,
+            overflowY: "auto"
+          }}>
+            {suggestions.map((s, index) => (
+              <div
+                key={index}
+                onClick={() => handleSelect(s)}
+                style={{
+                  padding: 8,
+                  cursor: "pointer",
+                  borderBottom: "1px solid #ddd"
+                }}
+              >
+                {s.name}
+              </div>
+            ))}
           </div>
-        ))}
+        )}
+
+        <p>Speed: {stats.speed}</p>
+        <p>Altitude: {stats.altitude}</p>
+
+        {/* ✅ NEW UI indicator */}
+        <p>Control Speed:</p>
+        <p>Shift = Faster | Ctrl = Slower</p>
       </div>
-    )}
-
-    <p>Speed: {stats.speed}</p>
-    <p>Altitude: {stats.altitude}</p>
-
-    {/* ✅ NEW UI indicator */}
-    <p>Control Speed:</p>
-    <p>Shift = Faster | Ctrl = Slower</p>
-  </div>
-
-  <hr />
-
-  <select
-    value={selectedRoute.name}
-    onChange={(e) =>
-      setSelectedRoute(
-        ROUTES.find((r) => r.name === e.target.value)
-      )
-    }
-    style={{ padding: 6, marginTop: 10 }}
-  >
-    {ROUTES.map((r) => (
-      <option key={r.name}>{r.name}</option>
-    ))}
-  </select>
-<div style={{ position: "absolute", bottom: 20, left: 20, zIndex: 100 }}>
-          <button onClick={startJourney}>Start Journey ✈️</button>
-
-</div>
-
-<p>
-  Mode:{" "}
-  <b>{autopilot ? "Autopilot 🤖" : "Manual 🎮"}</b>
-</p>
-
-
-      
 
       <Canvas camera={{ position: [0, 4, 10], fov: 60 }}>
         <color attach="background" args={["#87CEEB"]} />
@@ -631,15 +553,12 @@ const targetRef = useRef(null);
         <Ground planeRef={planeRef} center={center} />
 
         <Suspense fallback={null}>
-         <Plane
-  speed={speed}
-  setStats={setStats}
-  setHeading={setHeading}
-  ref={planeRef}
-  autopilot={autopilot}
-  targetRef={targetRef}
-  setAutopilot={setAutopilot}
-/>
+          <Plane
+            speed={speed} // ✅ dynamic now
+            setStats={setStats}
+            setHeading={setHeading}
+            ref={planeRef}
+          />
         </Suspense>
       </Canvas>
     </div>
