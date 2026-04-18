@@ -280,7 +280,8 @@ function Compass({ heading }) {
 }
 
 // ================= PLANE =================
-const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
+const Plane = React.forwardRef(
+  ({ speed, setStats, setHeading, autopilot, targetRef, setAutopilot }, planeRef) => {
   const { camera } = useThree();
 
   let model;
@@ -354,7 +355,7 @@ const Plane = React.forwardRef(({ speed, setStats, setHeading }, planeRef) => {
       );
 
       forward.multiplyScalar(speed);
-      p.position.add(forward);
+   p.position.lerp(target, 0.01);
 
       // stop when reached destination
       if (p.position.distanceTo(target) < 10) {
@@ -685,12 +686,15 @@ const targetRef = useRef(null);
         <Ground planeRef={planeRef} center={center} />
 
         <Suspense fallback={null}>
-          <Plane
-            speed={speed} // ✅ dynamic now
-            setStats={setStats}
-            setHeading={setHeading}
-            ref={planeRef}
-          />
+         <Plane
+  speed={speed}
+  setStats={setStats}
+  setHeading={setHeading}
+  ref={planeRef}
+  autopilot={autopilot}
+  targetRef={targetRef}
+  setAutopilot={setAutopilot}
+/>
         </Suspense>
       </Canvas>
     </div>
