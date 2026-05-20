@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import {
   MapContainer,
@@ -40,249 +41,188 @@ const weatherIconsUrls = {
   Default: "https://cdn-icons-png.flaticon.com/512/252/252035.png"
 };
 
-const zoneColors = {
-  danger: "#ff3b30",
-  caution: "#ff9500",
-  safe: "#00ff88"
+// ================= WIND COLOR GRADIENT =================
+const getWindColor = (wind) => {
+  if (wind < 5) return "#00ff88";
+  if (wind < 10) return "#a3ff00";
+  if (wind < 15) return "#ffcc00";
+  if (wind < 20) return "#ff8800";
+  return "#ff3b30";
 };
 
-// ================= WEATHER ICON =================
-const createZoneIcon = (weatherMain, zoneType, isSelected) => {
-  const color = zoneColors[zoneType] || "green";
-  const weatherUrl = weatherIconsUrls[weatherMain] || weatherIconsUrls.Default;
+// ================= WIND VECTOR =================
+const createWindArrow = (lat, lng, speed, deg) => {
+  const length = Math.min(speed * 500, 40000);
+
+  const rad = (deg * Math.PI) / 180;
+  const endLat = lat + (Math.cos(rad) * length) / 111320;
+  const endLng = lng + (Math.sin(rad) * length) / (111320 * Math.cos(lat * Math.PI / 180));
+
+  return [[lat, lng], [endLat, endLng]];
+};
+
+// ================= ZONE ICON =================
+const createZoneIcon = (weatherMain) => {
+  const icon = weatherIconsUrls[weatherMain] || weatherIconsUrls.Default;
 
   return L.divIcon({
     html: `
       <div style="
-        background:${color};
-        border:${isSelected ? "3px solid yellow" : "2px solid white"};
+        background:rgba(0,0,0,0.4);
+        border:2px solid white;
         border-radius:50%;
-        width:36px;
-        height:36px;
+        width:34px;
+        height:34px;
         display:flex;
         align-items:center;
         justify-content:center;
-        box-shadow:0 0 12px rgba(0,0,0,0.5);
+        backdrop-filter:blur(6px);
       ">
-        <img src="${weatherUrl}" style="width:20px;height:20px;" />
+        <img src="${icon}" style="width:20px;height:20px;" />
       </div>
     `,
     className: ""
   });
 };
 
-// ================= MAP PANEL =================
+// ================= MAP =================
 export default function MapPanel() {
   const [zones, setZones] = useState([]);
+  const [windVectors, setWindVectors] = useState([]);
+
   const [center, setCenter] = useState([5.6051, -0.1662]);
   const [radius, setRadius] = useState(150);
 
   const [planes, setPlanes] = useState({});
   const [planeTrails, setPlaneTrails] = useState({});
-  const [lastUpdated, setLastUpdated] = useState(null);
-  const [startTracking, setStartTracking] = useState(false);
-
-  const [selectedPlane, setSelectedPlane] = useState(null);
   const [selectedZone, setSelectedZone] = useState(null);
 
   const WEATHER_API = import.meta.env.VITE_WEATHER_API_KEY;
 
-  const [cityInput, setCityInput] = useState("Accra");
-  const [radiusInput, setRadiusInput] = useState(radius);
-
-  // ================= RANDOM WEATHER POINTS =================
-  const generateRandomPoints = (count = 10) => {
-    return Array.from({ length: count }, () => ({
-      lat: center[0] + (Math.random() - 0.5) * (radius / 50),
-      lng: center[1] + (Math.random() - 0.5) * (radius / 50)
+  // ================= RANDOM POINTS =================
+  const generatePoints = () => {
+    return Array.from({ length: 10 }, () => ({
+      lat: center[0] + (Math.random() - 0.5) * 2,
+      lng: center[1] + (Math.random() - 0.5) * 2
     }));
   };
 
-  // ================= WEATHER ZONES =================
-  const generateZonesFromWeather = async () => {
-    const points = generateRandomPoints(10);
+  // ================= WEATHER =================
+  const generateWeather = async () => {
+    const points = generatePoints();
     const newZones = [];
+    const windLines = [];
 
     for (let p of points) {
-      try {
-        const res = await fetch(
-          `https://api.openweathermap.org/data/2.5/weather?lat=${p.lat}&lon=${p.lng}&appid=${WEATHER_API}&units=metric`
-        );
+      const res = await fetch(
+        `https://api.openweathermap.org/data/2.5/weather?lat=${p.lat}&lon=${p.lng}&appid=${WEATHER_API}&units=metric`
+      );
 
-        const data = await res.json();
+      const data = await res.json();
 
-        const wind = data.wind?.speed || 0;
-        const temp = data.main?.temp || 0;
-        const weatherMain = data.weather?.[0]?.main || "Clear";
+      const wind = data.wind?.speed || 0;
+      const deg = data.wind?.deg || 0;
+      const main = data.weather?.[0]?.main || "Clear";
 
-        let type = "safe";
-        if (wind > 15 || weatherMain === "Rain") type = "danger";
-        else if (wind > 8 || weatherMain === "Clouds") type = "caution";
+      newZones.push({
+        ...p,
+        wind,
+        main
+      });
 
-        newZones.push({
-          id: Math.random(),
-          ...p,
-          type,
-          weather: {
-            temp,
-            wind,
-            description: data.weather?.[0]?.description,
-            main: weatherMain
-          }
-        });
-      } catch (err) {
-        console.error(err);
-      }
+      windLines.push(createWindArrow(p.lat, p.lng, wind, deg));
     }
 
     setZones(newZones);
-    setSelectedZone(null);
-  };
-
-  // ================= CITY SEARCH =================
-  const updateCenter = async () => {
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${cityInput}`
-      );
-      const data = await res.json();
-
-      if (data[0]) {
-        setCenter([parseFloat(data[0].lat), parseFloat(data[0].lon)]);
-        setRadius(Number(radiusInput));
-      } else alert("City not found");
-    } catch (err) {
-      console.error(err);
-    }
+    setWindVectors(windLines);
   };
 
   // ================= FLIGHTS =================
   const fetchFlights = async () => {
-    try {
-      const res = await fetch("/api/flights");
-      const data = await res.json();
+    const res = await fetch("/api/flights");
+    const data = await res.json();
 
-      const incoming =
-        data.states?.filter(p => p[5] && p[6]).map(p => ({
-          icao: p[0],
-          callsign: p[1] || "N/A",
-          lat: p[6],
-          lng: p[5],
-          altitude: p[7],
-          velocity: p[9],
-          heading: p[10]
-        })) || [];
+    const incoming =
+      data.states?.filter(p => p[5] && p[6]).map(p => ({
+        icao: p[0],
+        callsign: p[1],
+        lat: p[6],
+        lng: p[5]
+      })) || [];
 
-      setPlanes(prev => {
-        const updated = { ...prev };
-        incoming.forEach(p => {
-          if (!updated[p.icao]) {
-            updated[p.icao] = { ...p, targetLat: p.lat, targetLng: p.lng };
-          } else {
-            updated[p.icao].targetLat = p.lat;
-            updated[p.icao].targetLng = p.lng;
-          }
-        });
-        return updated;
-      });
-
-      setPlaneTrails(prev => {
-        const updated = { ...prev };
-        incoming.forEach(p => {
-          if (!updated[p.icao]) updated[p.icao] = [];
-          updated[p.icao].push([p.lat, p.lng]);
-          if (updated[p.icao].length > 25) updated[p.icao].shift();
-        });
-        return updated;
-      });
-
-      setLastUpdated(new Date().toLocaleTimeString());
-    } catch (err) {
-      console.error(err);
-    }
+    setPlanes(prev => {
+      const updated = { ...prev };
+      incoming.forEach(p => (updated[p.icao] = p));
+      return updated;
+    });
   };
-
-  // ================= SMOOTH MOVEMENT =================
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setPlanes(prev => {
-        const updated = { ...prev };
-        Object.values(updated).forEach(p => {
-          if (!p.targetLat) return;
-          p.lat += (p.targetLat - p.lat) * 0.02;
-          p.lng += (p.targetLng - p.lng) * 0.02;
-        });
-        return { ...updated };
-      });
-    }, 50);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // ================= TRACKING LOOP =================
-  useEffect(() => {
-    if (!startTracking) return;
-
-    fetchFlights();
-    const interval = setInterval(() => {
-      if (document.visibilityState === "visible") fetchFlights();
-    }, 90000);
-
-    return () => clearInterval(interval);
-  }, [startTracking]);
 
   return (
     <div style={{ display: "flex" }}>
 
       {/* SIDEBAR */}
-      <div style={{ width: 300, background: "#0f172a", color: "white", padding: 20 }}>
-        <h2>✈ Aviation Weather</h2>
+      <div style={{ width: 300, padding: 20, background: "#0f172a", color: "white" }}>
+        <h2>🌍 Windy Style Map</h2>
 
-        <input value={cityInput} onChange={e => setCityInput(e.target.value)} />
-        <input value={radiusInput} onChange={e => setRadiusInput(e.target.value)} />
+        <button onClick={generateWeather} style={{ marginTop: 10 }}>
+          Generate Wind Zones
+        </button>
 
-        <button onClick={updateCenter}>Set City</button>
-        <button onClick={() => setStartTracking(true)}>Start Tracking</button>
-        <button onClick={generateZonesFromWeather}>Generate Weather</button>
-
-        <p>Planes: {Object.keys(planes).length}</p>
-        <p>Updated: {lastUpdated}</p>
-
-        {selectedZone && (
-          <div>
-            <h3>Weather</h3>
-            <p>{selectedZone.weather.main}</p>
-            <p>{selectedZone.weather.temp}°C</p>
-          </div>
-        )}
+        <button onClick={fetchFlights} style={{ marginTop: 10 }}>
+          Load Flights
+        </button>
       </div>
 
       {/* MAP */}
       <MapContainer center={center} zoom={6} style={{ height: "100vh", width: "100%" }}>
 
-        {/* BASE MAP */}
+        {/* BASE */}
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-        {/* 🌍 WINDY-LIKE WEATHER LAYERS (NO PLUGINS) */}
+        {/* WEATHER LAYERS */}
         <TileLayer
           url={`https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=${WEATHER_API}`}
           opacity={0.4}
         />
-
         <TileLayer
           url={`https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=${WEATHER_API}`}
           opacity={0.5}
         />
 
-        <TileLayer
-          url={`https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${WEATHER_API}`}
-          opacity={0.4}
-        />
+        {/* 🌈 WINDY STYLE ZONES (GRADIENT RADIAL) */}
+        {zones.map((z, i) => (
+          <Circle
+            key={i}
+            center={[z.lat, z.lng]}
+            radius={30000}
+            pathOptions={{
+              color: getWindColor(z.wind),
+              fillColor: getWindColor(z.wind),
+              fillOpacity: 0.25,
+              weight: 2
+            }}
+          >
+            <Popup>
+              Wind: {z.wind} m/s
+              <br />
+              {z.main}
+            </Popup>
+          </Circle>
+        ))}
 
-        <TileLayer
-          url={`https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=${WEATHER_API}`}
-          opacity={0.35}
-        />
+        {/* 🌪 WIND DIRECTION ARROWS */}
+        {windVectors.map((line, i) => (
+          <Polyline
+            key={i}
+            positions={line}
+            pathOptions={{
+              color: "#00e5ff",
+              weight: 2,
+              opacity: 0.8,
+              dashArray: "6 6"
+            }}
+          />
+        ))}
 
         {/* AIRPORTS */}
         {airports.map((a, i) => (
@@ -291,36 +231,13 @@ export default function MapPanel() {
           </Marker>
         ))}
 
-        {/* WEATHER ZONES */}
-        {zones.map(z => (
-          <Marker
-            key={z.id}
-            position={[z.lat, z.lng]}
-            icon={createZoneIcon(z.weather.main, z.type, selectedZone?.id === z.id)}
-            eventHandlers={{
-              click: () => {
-                setSelectedZone(z);
-                setSelectedPlane(null);
-              }
-            }}
-          />
-        ))}
-
         {/* PLANES */}
-        {Object.values(planes).map(p => (
-          <Marker
-            key={p.icao}
-            position={[p.lat, p.lng]}
-            icon={planeIcon}
-          />
+        {Object.values(planes).map((p, i) => (
+          <Marker key={i} position={[p.lat, p.lng]} icon={planeIcon}>
+            <Popup>{p.callsign}</Popup>
+          </Marker>
         ))}
 
-        {/* TRAILS */}
-        {Object.entries(planeTrails).map(([k, t]) => (
-          <Polyline key={k} positions={t} color="cyan" />
-        ))}
-
-        <Circle center={center} radius={radius * 1000} />
       </MapContainer>
     </div>
   );
