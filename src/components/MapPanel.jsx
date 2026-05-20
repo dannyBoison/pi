@@ -5,13 +5,11 @@ import {
   Marker,
   Popup,
   Circle,
-  Polyline,
-  useMap
+  Polyline
 } from "react-leaflet";
 
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import "leaflet-velocity";
 
 // ================= AIRPORTS =================
 const airports = [
@@ -49,7 +47,7 @@ const zoneColors = {
   safe: "green"
 };
 
-// ================= ZONE ICON =================
+// ================= WEATHER ICON =================
 const createZoneIcon = (weatherMain, zoneType, isSelected) => {
   const color = zoneColors[zoneType] || "green";
   const weatherUrl = weatherIconsUrls[weatherMain] || weatherIconsUrls.Default;
@@ -73,59 +71,26 @@ const createZoneIcon = (weatherMain, zoneType, isSelected) => {
   });
 };
 
-// ================= WIND LAYER (WINDY STYLE) =================
-const WindLayer = () => {
-  const map = useMap();
-
-  useEffect(() => {
-    let velocityLayer;
-
-    fetch(
-      "https://raw.githubusercontent.com/danwild/leaflet-velocity/master/demo/wind-global.json"
-    )
-      .then((res) => res.json())
-      .then((data) => {
-        velocityLayer = L.velocityLayer({
-          data,
-          displayValues: true,
-          displayOptions: {
-            velocityType: "Global Wind",
-            position: "bottomleft",
-            emptyString: "No wind data"
-          },
-          maxVelocity: 15,
-          velocityScale: 0.01,
-          particleAge: 90,
-          lineWidth: 2,
-          frameRate: 20,
-          colorScale: ["#ffffff", "#a6f0ff", "#4dc3ff", "#1e90ff", "#0b3d91"]
-        });
-
-        velocityLayer.addTo(map);
-      });
-
-    return () => {
-      if (velocityLayer) map.removeLayer(velocityLayer);
-    };
-  }, [map]);
-
-  return null;
-};
-
 // ================= COMPONENT =================
 export default function MapPanel() {
   const [zones, setZones] = useState([]);
-  const [center, setCenter] = useState([5.6051, -0.1662]);
-  const [radius, setRadius] = useState(150);
+  const [center, setCenter] = useState([5.6051, -0.1662]); // default Accra
+  const [radius, setRadius] = useState(150); // km
 
   const [planes, setPlanes] = useState({});
   const [planeTrails, setPlaneTrails] = useState({});
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [startTracking, setStartTracking] = useState(false);
 
   const [selectedPlane, setSelectedPlane] = useState(null);
   const [selectedZone, setSelectedZone] = useState(null);
 
   const WEATHER_API = import.meta.env.VITE_WEATHER_API_KEY;
 
+  const [cityInput, setCityInput] = useState("Accra");
+  const [radiusInput, setRadiusInput] = useState(radius);
+
+  // ================= RANDOM WEATHER =================
   const generateRandomPoints = (count = 8) => {
     const points = [];
     for (let i = 0; i < count; i++) {
@@ -136,57 +101,210 @@ export default function MapPanel() {
     return points;
   };
 
+  // ================= WEATHER =================
   const generateZonesFromWeather = async () => {
     const randomPoints = generateRandomPoints(8);
     const newZones = [];
 
     for (let p of randomPoints) {
-      const res = await fetch(
-        `https://api.openweathermap.org/data/2.5/weather?lat=${p.lat}&lon=${p.lng}&appid=${WEATHER_API}&units=metric`
-      );
-      const data = await res.json();
+      try {
+        const res = await fetch(
+          `https://api.openweathermap.org/data/2.5/weather?lat=${p.lat}&lon=${p.lng}&appid=${WEATHER_API}&units=metric`
+        );
+        const data = await res.json();
 
-      const wind = data.wind?.speed || 0;
-      const temp = data.main?.temp || 0;
-      const weatherMain = data.weather?.[0]?.main || "Default";
+        const wind = data.wind?.speed || 0;
+        const temp = data.main?.temp || 0;
+        const weatherMain = data.weather?.[0]?.main || "Default";
 
-      let type = "safe";
-      if (wind > 15 || weatherMain === "Rain") type = "danger";
-      else if (wind > 8 || weatherMain === "Clouds") type = "caution";
+        let type = "safe";
+        if (wind > 15 || weatherMain === "Rain") type = "danger";
+        else if (wind > 8 || weatherMain === "Clouds") type = "caution";
 
-      newZones.push({
-        id: Math.random(),
-        ...p,
-        type,
-        weather: {
-          temp,
-          wind,
-          description: data.weather?.[0]?.description,
-          main: weatherMain
-        }
-      });
+        newZones.push({
+          id: Math.random(),
+          ...p,
+          type,
+          weather: {
+            temp,
+            wind,
+            description: data.weather?.[0]?.description,
+            main: weatherMain
+          }
+        });
+      } catch (err) {
+        console.error("Weather fetch error:", err);
+      }
     }
 
     setZones(newZones);
+    setSelectedZone(null);
   };
+
+  // ================= CITY SEARCH =================
+  const updateCenter = async () => {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${cityInput}`
+      );
+      const data = await res.json();
+      if (data[0]) {
+        setCenter([parseFloat(data[0].lat), parseFloat(data[0].lon)]);
+        setRadius(Number(radiusInput));
+      } else {
+        alert("City not found!");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error fetching city coordinates");
+    }
+  };
+
+  // ================= FETCH FLIGHTS =================
+  const fetchFlights = async () => {
+    try {
+      const res = await fetch("/api/flights");
+      const data = await res.json();
+
+      const incoming = data.states
+        ?.filter(p => p[5] && p[6])
+        .map(p => ({
+          icao: p[0],
+          callsign: p[1] || "N/A",
+          lat: p[6],
+          lng: p[5],
+          altitude: p[7],
+          velocity: p[9],
+          heading: p[10]
+        })) || [];
+
+      setPlanes(prev => {
+        const updated = { ...prev };
+        incoming.forEach(p => {
+          if (!updated[p.icao]) {
+            updated[p.icao] = { ...p, targetLat: p.lat, targetLng: p.lng };
+          } else {
+            updated[p.icao].targetLat = p.lat;
+            updated[p.icao].targetLng = p.lng;
+          }
+        });
+        return updated;
+      });
+
+      setPlaneTrails(prev => {
+        const updated = { ...prev };
+        incoming.forEach(p => {
+          if (!updated[p.icao]) updated[p.icao] = [];
+          updated[p.icao].push([p.lat, p.lng]);
+          if (updated[p.icao].length > 20) updated[p.icao].shift();
+        });
+        return updated;
+      });
+
+      setLastUpdated(new Date().toLocaleTimeString());
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // ================= SMOOTH MOVEMENT =================
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPlanes(prev => {
+        const updated = { ...prev };
+        Object.values(updated).forEach(p => {
+          if (!p.targetLat) return;
+          p.lat += (p.targetLat - p.lat) * 0.02;
+          p.lng += (p.targetLng - p.lng) * 0.02;
+        });
+        return { ...updated };
+      });
+    }, 50);
+    return () => clearInterval(interval);
+  }, []);
+
+  // ================= FETCH LOOP =================
+  useEffect(() => {
+    if (!startTracking) return;
+    fetchFlights();
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") fetchFlights();
+    }, 90000);
+    return () => clearInterval(interval);
+  }, [startTracking]);
 
   return (
     <div style={{ display: "flex" }}>
+      {/* SIDEBAR */}
+      <div style={{ width: "300px", background: "#0f172a", color: "white", padding: "20px" }}>
+        <h2>✈ Smart Flight System</h2>
+
+        <div style={{ marginTop: 10 }}>
+          <input
+            type="text"
+            value={cityInput}
+            onChange={e => setCityInput(e.target.value)}
+            placeholder="Enter city"
+            style={{ width: "60%", padding: 5 }}
+          />
+          <input
+            type="number"
+            value={radiusInput}
+            onChange={e => setRadiusInput(e.target.value)}
+            placeholder="Radius (km)"
+            style={{ width: "35%", marginLeft: "5%", padding: 5 }}
+          />
+          <button onClick={updateCenter} style={{ ...btn, marginLeft: 0, marginTop: 5 }}>Set City</button>
+        </div>
+
+        <button onClick={() => setStartTracking(true)} style={btnPrimary}>
+          Start Tracking
+        </button>
+
+        <button onClick={generateZonesFromWeather} style={btn}>
+          Generate Weather
+        </button>
+
+        <div style={card}>
+          <p>Planes: {Object.keys(planes).length}</p>
+          <p>Updated: {lastUpdated}</p>
+        </div>
+
+        {/* WEATHER DETAILS */}
+        {selectedZone && selectedZone.weather && (
+          <div style={{ ...card, marginTop: 10 }}>
+            <h3>🌦 Weather Detail</h3>
+            <p><strong>Main:</strong> {selectedZone.weather.main}</p>
+            <p><strong>Description:</strong> {selectedZone.weather.description}</p>
+            <p><strong>Temperature:</strong> {selectedZone.weather.temp} °C</p>
+            <p><strong>Wind Speed:</strong> {selectedZone.weather.wind} m/s</p>
+            <p><strong>Zone Type:</strong> {selectedZone.type}</p>
+          </div>
+        )}
+
+        {/* PLANE DETAILS */}
+        {selectedPlane && (
+          <div style={{ ...card, marginTop: 10 }}>
+            <h3>✈ Plane Detail</h3>
+            <p><strong>Callsign:</strong> {selectedPlane.callsign}</p>
+            <p><strong>Altitude:</strong> {selectedPlane.altitude} m</p>
+            <p><strong>Speed:</strong> {selectedPlane.velocity} m/s</p>
+            <p><strong>Heading:</strong> {selectedPlane.heading}°</p>
+          </div>
+        )}
+      </div>
+
       {/* MAP */}
       <MapContainer center={center} zoom={6} style={{ height: "100vh", width: "100%" }}>
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-        {/* 🌬 WIND FLOW LAYER (NEW) */}
-        <WindLayer />
-
-        {/* AIRPORTS */}
         {airports.map((a, i) => (
           <Marker key={i} position={a.coords} icon={airportIcon}>
             <Popup>{a.name}</Popup>
           </Marker>
         ))}
 
-        {/* WEATHER ZONES */}
+        {/* WEATHER */}
         {zones.map((z) => (
           <Marker
             key={z.id}
@@ -194,20 +312,37 @@ export default function MapPanel() {
             icon={createZoneIcon(z.weather.main, z.type, selectedZone?.id === z.id)}
             eventHandlers={{
               click: () => {
-                setSelectedZone(z);
+                setSelectedZone(z); // ✅ sidebar updates now
                 setSelectedPlane(null);
               }
             }}
           >
             <Popup>
-              <strong>{z.weather.main}</strong><br />
-              {z.weather.description}<br />
-              Wind: {z.weather.wind} m/s
+              <strong>{z.weather.main}</strong><br/>
+              {z.weather.description}<br/>
+              Temp: {z.weather.temp} °C, Wind: {z.weather.wind} m/s
             </Popup>
           </Marker>
         ))}
 
-        {/* PLANES TRAILS */}
+        {/* PLANES */}
+        {Object.values(planes).map((plane) => (
+          <Marker
+            key={plane.icao}
+            position={[plane.lat, plane.lng]}
+            icon={planeIcon}
+            eventHandlers={{
+              click: () => {
+                setSelectedPlane(plane);
+                setSelectedZone(null);
+              }
+            }}
+          >
+            <Popup>{plane.callsign}</Popup>
+          </Marker>
+        ))}
+
+        {/* TRAILS */}
         {Object.entries(planeTrails).map(([icao, trail]) => (
           <Polyline key={icao} positions={trail} pathOptions={{ color: "cyan" }} />
         ))}
@@ -217,3 +352,25 @@ export default function MapPanel() {
     </div>
   );
 }
+
+// ================= STYLES =================
+const btn = {
+  padding: 10,
+  borderRadius: 6,
+  border: "none",
+  marginTop: 10,
+  cursor: "pointer"
+};
+
+const btnPrimary = {
+  ...btn,
+  background: "#2563eb",
+  color: "white"
+};
+
+const card = {
+  background: "#1e293b",
+  padding: 15,
+  borderRadius: 8,
+  marginTop: 10
+};
