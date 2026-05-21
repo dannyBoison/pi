@@ -146,10 +146,18 @@ function Ground({ planeRef, center }) {
 
   return (
     <group ref={groupRef}>
-      {tiles.map((tile) => (
-        <Tile key={tile.key} {...tile} size={tileSize} />
-      ))}
-    </group>
+  {tiles.map((tile) => {
+    const { key, ...rest } = tile; // 👈 remove key from spread
+
+    return (
+      <Tile
+        key={key}
+        {...rest}
+        size={tileSize}
+      />
+    );
+  })}
+</group>
   );
 }
 

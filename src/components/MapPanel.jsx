@@ -8,6 +8,8 @@ import {
   Polyline,
   useMap
 } from "react-leaflet";
+import "leaflet.heat";
+import "leaflet-rotatedmarker";
 
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -75,6 +77,10 @@ const createZoneIcon = (weatherMain, zoneType, isSelected) => {
 
 
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 6b995dc (Updated weather map with heatmap and wind flow improvements)
 function WindFlow() {
   const map = useMap();
   const windGridRef = useRef([]);
@@ -258,6 +264,48 @@ function WindFlow() {
 
   return null;
 }
+<<<<<<< HEAD
+=======
+
+
+
+function TemperatureHeatmap({ zones }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!zones.length) return;
+
+    const heatPoints = zones.map(z => [
+      z.lat,
+      z.lng,
+      z.weather.temp / 40
+    ]);
+
+    const heat = L.heatLayer(heatPoints, {
+      radius: 40,
+      blur: 25,
+      maxZoom: 10,
+      gradient: {
+        0.1: "blue",
+        0.4: "cyan",
+        0.6: "yellow",
+        0.8: "orange",
+        1.0: "red"
+      }
+    });
+
+    heat.addTo(map);
+
+    return () => {
+      map.removeLayer(heat);
+    };
+  }, [zones, map]);
+
+  return null;
+}
+
+
+>>>>>>> 6b995dc (Updated weather map with heatmap and wind flow improvements)
 // ================= COMPONENT =================
 export default function MapPanel() {
   const [zones, setZones] = useState([]);
@@ -268,6 +316,14 @@ export default function MapPanel() {
   const [planeTrails, setPlaneTrails] = useState({});
   const [lastUpdated, setLastUpdated] = useState(null);
   const [startTracking, setStartTracking] = useState(false);
+
+
+  const [layers, setLayers] = useState({
+  temp: true,
+  rain: true,
+  clouds: true,
+  storms: true
+});
 
   const [selectedPlane, setSelectedPlane] = useState(null);
   const [selectedZone, setSelectedZone] = useState(null);
@@ -403,6 +459,13 @@ export default function MapPanel() {
           if (!p.targetLat) return;
           p.lat += (p.targetLat - p.lat) * 0.02;
           p.lng += (p.targetLng - p.lng) * 0.02;
+
+
+          // rotation smoothing (NEW)
+  if (!p.currentRotation) p.currentRotation = p.heading || 0;
+
+  p.currentRotation += (p.heading - p.currentRotation) * 0.1;
+  
         });
         return { ...updated };
       });
@@ -489,11 +552,37 @@ export default function MapPanel() {
   style={{ height: "100vh", width: "100%", position: "relative" }}
 >
 
+<<<<<<< HEAD
  <TileLayer
   url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
   attribution="&copy; OpenStreetMap & CARTO"
 />
    
+=======
+
+
+
+ <TileLayer
+  url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+  attribution="&copy; OpenStreetMap & CARTO"
+/>    
+
+
+
+{layers.rain && (
+  <TileLayer
+    url={`https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${WEATHER_API}`}
+    opacity={0.5}
+  />
+)}
+   
+
+   <TileLayer
+  url={`https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${WEATHER_API}`}
+/>
+
+
+>>>>>>> 6b995dc (Updated weather map with heatmap and wind flow improvements)
 <WindFlow />
         {airports.map((a, i) => (
           <Marker key={i} position={a.coords} icon={airportIcon}>
@@ -523,21 +612,23 @@ export default function MapPanel() {
         ))}
 
         {/* PLANES */}
-        {Object.values(planes).map((plane) => (
-          <Marker
-            key={plane.icao}
-            position={[plane.lat, plane.lng]}
-            icon={planeIcon}
-            eventHandlers={{
-              click: () => {
-                setSelectedPlane(plane);
-                setSelectedZone(null);
-              }
-            }}
-          >
-            <Popup>{plane.callsign}</Popup>
-          </Marker>
-        ))}
+       {Object.values(planes).map((plane) => (
+  <Marker
+    key={plane.icao}
+    position={[plane.lat, plane.lng]}
+    icon={planeIcon}
+    rotationAngle={plane.heading || 0}
+    rotationOrigin="center"
+    eventHandlers={{
+      click: () => {
+        setSelectedPlane(plane);
+        setSelectedZone(null);
+      }
+    }}
+  >
+    <Popup>{plane.callsign}</Popup>
+  </Marker>
+))}
 
         {/* TRAILS */}
         {Object.entries(planeTrails).map(([icao, trail]) => (

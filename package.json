@@ -14,12 +14,14 @@
     "@react-three/fiber": "^9.5.0",
     "axios": "^1.13.6",
     "leaflet": "^1.9.4",
+    "leaflet-rotatedmarker": "^0.2.0",
+    "leaflet-velocity": "^2.1.4",
     "leaflet.heat": "^0.2.0",
     "mapbox-gl": "^3.21.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-leaflet": "^5.0.0",
-    "three": "^0.183.2"
+    "three": "^0.184.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
