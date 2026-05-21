@@ -460,6 +460,20 @@ export default function MapPanel() {
           p.lng += (p.targetLng - p.lng) * 0.02;
 
 
+          const speed = p.velocity || 0;
+const headingRad = (p.heading || 0) * Math.PI / 180;
+
+// predict 10 seconds ahead
+const t = 10;
+
+// simple geo approximation
+const dx = Math.cos(headingRad) * speed * t * 0.00001;
+const dy = Math.sin(headingRad) * speed * t * 0.00001;
+
+p.futureLat = p.lat + dy;
+p.futureLng = p.lng + dx;
+
+
           // rotation smoothing (NEW)
   if (!p.currentRotation) p.currentRotation = p.heading || 0;
 
@@ -647,6 +661,34 @@ export default function MapPanel() {
         {Object.entries(planeTrails).map(([icao, trail]) => (
           <Polyline key={icao} positions={trail} pathOptions={{ color: "cyan" }} />
         ))}
+
+      {Object.values(planes).map((plane) => {
+  if (!plane.futureLat || !plane.futureLng) return null;
+
+  const steps = 6;
+  const path = [];
+
+  for (let i = 0; i <= steps; i++) {
+    const ratio = i / steps;
+
+    path.push([
+      plane.lat + (plane.futureLat - plane.lat) * ratio,
+      plane.lng + (plane.futureLng - plane.lng) * ratio
+    ]);
+  }
+
+  return (
+    <Polyline
+      key={plane.icao + "_future"}
+      positions={path}
+      pathOptions={{
+        color: "yellow",
+        dashArray: "6, 10",
+        weight: 2
+      }}
+    />
+  );
+})}
 
         <Circle center={center} radius={radius * 1000} />
       </MapContainer>
