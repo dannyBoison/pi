@@ -122,7 +122,7 @@ function WindFlow() {
       const gridPoints = [];
 
       // 🔥 fixed grid (NOT random anymore)
-      const steps = 6;
+      const steps = 8;
 
       for (let i = 0; i < steps; i++) {
         for (let j = 0; j < steps; j++) {
@@ -182,38 +182,42 @@ function WindFlow() {
     }
 
     // ================= WIND FIELD =================
-    const windField = (x, y) => {
-      let closest = null;
-      let minDist = Infinity;
+   const windField = (x, y) => {
+  let closest = null;
+  let minDist = Infinity;
 
-      for (let w of windGridRef.current) {
-        const dx = w.lat - y;
-        const dy = w.lng - x;
-        const d = dx * dx + dy * dy;
+  for (let w of windGridRef.current) {
+    // 🌍 convert lat/lng → screen pixels
+    const point = map.latLngToContainerPoint([w.lat, w.lng]);
 
-        if (d < minDist) {
-          minDist = d;
-          closest = w;
-        }
-      }
+    const dx = point.x - x;
+    const dy = point.y - y;
 
-      if (!closest) return { vx: 0.2, vy: 0.2 };
+    const d = dx * dx + dy * dy;
 
-      const rad = (closest.windDeg * Math.PI) / 180;
-      const speed = (closest.windSpeed || 0) * 0.8;
+    if (d < minDist) {
+      minDist = d;
+      closest = { ...w, point };
+    }
+  }
 
-      return {
-        vx: Math.cos(rad) * speed,
-        vy: Math.sin(rad) * speed
-      };
-    };
+  if (!closest) return { vx: 0.2, vy: 0.2 };
+
+  const rad = (closest.windDeg * Math.PI) / 180;
+  const speed = (closest.windSpeed || 0) * 0.8;
+
+  return {
+    vx: Math.cos(rad) * speed,
+    vy: Math.sin(rad) * speed
+  };
+};
 
     // ================= ANIMATION =================
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       ctx.globalCompositeOperation = "lighter";
-      ctx.lineWidth = 4;
+      ctx.lineWidth = 5;
 
       particles.forEach((p) => {
         const wind = windField(p.x, p.y);
@@ -221,8 +225,9 @@ function WindFlow() {
         const oldX = p.x;
         const oldY = p.y;
 
-        p.vx += (wind.vx - p.vx) * 0.05;
-        p.vy += (wind.vy - p.vy) * 0.05;
+        const strength = 0.05;
+p.vx += (wind.vx - p.vx) * strength;
+p.vy += (wind.vy - p.vy) * strength;
 
         p.x += p.vx;
         p.y += p.vy;
@@ -563,7 +568,12 @@ export default function MapPanel() {
   />
 )}
    
-
+{layers.clouds && (
+  <TileLayer
+    url={`https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=${WEATHER_API}`}
+    opacity={0.5}
+  />
+)}
  
 
 
@@ -575,25 +585,44 @@ export default function MapPanel() {
         ))}
 
         {/* WEATHER */}
-        {zones.map((z) => (
-          <Marker
-            key={z.id}
-            position={[z.lat, z.lng]}
-            icon={createZoneIcon(z.weather.main, z.type, selectedZone?.id === z.id)}
-            eventHandlers={{
-              click: () => {
-                setSelectedZone(z); // ✅ sidebar updates now
-                setSelectedPlane(null);
-              }
-            }}
-          >
-            <Popup>
-              <strong>{z.weather.main}</strong><br/>
-              {z.weather.description}<br/>
-              Temp: {z.weather.temp} °C, Wind: {z.weather.wind} m/s
-            </Popup>
-          </Marker>
-        ))}
+      {zones.map((z) => (
+  <>
+    {/* STORM CIRCLE (NEW) */}
+    {layers.storms && z.type === "danger" && (
+      <Circle
+        center={[z.lat, z.lng]}
+        radius={30000}
+        pathOptions={{
+          color: "red",
+          fillOpacity: 0.15
+        }}
+      />
+    )}
+
+    {/* WEATHER MARKER */}
+    <Marker
+      key={z.id}
+      position={[z.lat, z.lng]}
+      icon={createZoneIcon(
+        z.weather.main,
+        z.type,
+        selectedZone?.id === z.id
+      )}
+      eventHandlers={{
+        click: () => {
+          setSelectedZone(z);
+          setSelectedPlane(null);
+        }
+      }}
+    >
+      <Popup>
+        <strong>{z.weather.main}</strong><br />
+        {z.weather.description}<br />
+        Temp: {z.weather.temp} °C, Wind: {z.weather.wind} m/s
+      </Popup>
+    </Marker>
+  </>
+))}
 
         {/* PLANES */}
        {Object.values(planes).map((plane) => (
