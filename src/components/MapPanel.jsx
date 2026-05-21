@@ -77,10 +77,7 @@ const createZoneIcon = (weatherMain, zoneType, isSelected) => {
 
 
 
-<<<<<<< HEAD
-=======
 
->>>>>>> 6b995dc (Updated weather map with heatmap and wind flow improvements)
 function WindFlow() {
   const map = useMap();
   const windGridRef = useRef([]);
@@ -264,8 +261,6 @@ function WindFlow() {
 
   return null;
 }
-<<<<<<< HEAD
-=======
 
 
 
@@ -305,7 +300,6 @@ function TemperatureHeatmap({ zones }) {
 }
 
 
->>>>>>> 6b995dc (Updated weather map with heatmap and wind flow improvements)
 // ================= COMPONENT =================
 export default function MapPanel() {
   const [zones, setZones] = useState([]);
@@ -465,7 +459,7 @@ export default function MapPanel() {
   if (!p.currentRotation) p.currentRotation = p.heading || 0;
 
   p.currentRotation += (p.heading - p.currentRotation) * 0.1;
-  
+
         });
         return { ...updated };
       });
@@ -552,13 +546,6 @@ export default function MapPanel() {
   style={{ height: "100vh", width: "100%", position: "relative" }}
 >
 
-<<<<<<< HEAD
- <TileLayer
-  url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-  attribution="&copy; OpenStreetMap & CARTO"
-/>
-   
-=======
 
 
 
@@ -577,12 +564,9 @@ export default function MapPanel() {
 )}
    
 
-   <TileLayer
-  url={`https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${WEATHER_API}`}
-/>
+ 
 
 
->>>>>>> 6b995dc (Updated weather map with heatmap and wind flow improvements)
 <WindFlow />
         {airports.map((a, i) => (
           <Marker key={i} position={a.coords} icon={airportIcon}>
@@ -613,19 +597,19 @@ export default function MapPanel() {
 
         {/* PLANES */}
        {Object.values(planes).map((plane) => (
-  <Marker
-    key={plane.icao}
-    position={[plane.lat, plane.lng]}
-    icon={planeIcon}
-    rotationAngle={plane.heading || 0}
-    rotationOrigin="center"
-    eventHandlers={{
-      click: () => {
-        setSelectedPlane(plane);
-        setSelectedZone(null);
-      }
-    }}
-  >
+<Marker
+  key={plane.icao}
+  position={[plane.lat, plane.lng]}
+  icon={planeIcon}
+  rotationAngle={plane.currentRotation || 0}
+  rotationOrigin="center"
+  eventHandlers={{
+    click: () => {
+      setSelectedPlane(plane);
+      setSelectedZone(null);
+    }
+  }}
+>
     <Popup>{plane.callsign}</Popup>
   </Marker>
 ))}
