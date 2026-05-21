@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState,useRef, useEffect } from "react";
 import {
   MapContainer,
   TileLayer,
   Marker,
   Popup,
   Circle,
-  Polyline
+  Polyline,
+  useMap
 } from "react-leaflet";
 
 import L from "leaflet";
@@ -71,6 +72,192 @@ const createZoneIcon = (weatherMain, zoneType, isSelected) => {
   });
 };
 
+
+
+
+function WindFlow() {
+  const map = useMap();
+  const windGridRef = useRef([]);
+  const animationRef = useRef();
+
+  useEffect(() => {
+    const API_KEY = import.meta.env.VITE_WEATHER_API_KEY;
+
+    const canvas = L.DomUtil.create("canvas", "wind-canvas");
+    const ctx = canvas.getContext("2d");
+
+    canvas.style.position = "absolute";
+    canvas.style.top = "0";
+    canvas.style.left = "0";
+    canvas.style.pointerEvents = "none";
+    canvas.style.opacity = 0.19;
+   canvas.style.zIndex = 5;
+
+   map.getPanes().tilePane.appendChild(canvas);
+
+    const resize = () => {
+      const size = map.getSize();
+      const pos = map.containerPointToLayerPoint([0, 0]);
+      L.DomUtil.setPosition(canvas, pos);
+      canvas.width = size.x;
+      canvas.height = size.y;
+    };
+
+    map.whenReady(() => {
+  resize();
+});
+
+    
+    map.on("move", resize);
+    map.on("zoom", resize);
+    map.on("resize", resize);
+
+    // ================= WIND DATA =================
+    const loadWindData = async () => {
+      const b = map.getBounds();
+
+      const gridPoints = [];
+
+      // 🔥 fixed grid (NOT random anymore)
+      const steps = 6;
+
+      for (let i = 0; i < steps; i++) {
+        for (let j = 0; j < steps; j++) {
+          const lat =
+            b.getSouth() +
+            (i / steps) * (b.getNorth() - b.getSouth());
+
+          const lng =
+            b.getWest() +
+            (j / steps) * (b.getEast() - b.getWest());
+
+          gridPoints.push({ lat, lng });
+        }
+      }
+
+      const results = await Promise.all(
+        gridPoints.map(async (p) => {
+          try {
+            const res = await fetch(
+              `https://api.openweathermap.org/data/2.5/weather?lat=${p.lat}&lon=${p.lng}&appid=${API_KEY}&units=metric`
+            );
+
+            const data = await res.json();
+
+            return {
+              lat: p.lat,
+              lng: p.lng,
+              windSpeed: data.wind?.speed || 0,
+              windDeg: data.wind?.deg || 0
+            };
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      windGridRef.current = results.filter(Boolean);
+    };
+
+    // 🔥 IMPORTANT: wait for map ready
+    setTimeout(loadWindData, 1000);
+
+    map.on("moveend", loadWindData);
+    map.on("zoomend", loadWindData);
+
+    // ================= PARTICLES =================
+    const particles = [];
+    const count = 300;
+
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x: Math.random() * 1000,
+        y: Math.random() * 800,
+        vx: 0,
+        vy: 0
+      });
+    }
+
+    // ================= WIND FIELD =================
+    const windField = (x, y) => {
+      let closest = null;
+      let minDist = Infinity;
+
+      for (let w of windGridRef.current) {
+        const dx = w.lat - y;
+        const dy = w.lng - x;
+        const d = dx * dx + dy * dy;
+
+        if (d < minDist) {
+          minDist = d;
+          closest = w;
+        }
+      }
+
+      if (!closest) return { vx: 0.2, vy: 0.2 };
+
+      const rad = (closest.windDeg * Math.PI) / 180;
+      const speed = (closest.windSpeed || 0) * 0.8;
+
+      return {
+        vx: Math.cos(rad) * speed,
+        vy: Math.sin(rad) * speed
+      };
+    };
+
+    // ================= ANIMATION =================
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.globalCompositeOperation = "lighter";
+      ctx.lineWidth = 4;
+
+      particles.forEach((p) => {
+        const wind = windField(p.x, p.y);
+
+        const oldX = p.x;
+        const oldY = p.y;
+
+        p.vx += (wind.vx - p.vx) * 0.05;
+        p.vy += (wind.vy - p.vy) * 0.05;
+
+        p.x += p.vx;
+        p.y += p.vy;
+
+        if (
+          p.x < 0 ||
+          p.x > canvas.width ||
+          p.y < 0 ||
+          p.y > canvas.height
+        ) {
+          p.x = Math.random() * canvas.width;
+          p.y = Math.random() * canvas.height;
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(oldX, oldY);
+        ctx.lineTo(p.x, p.y);
+
+        ctx.strokeStyle = "rgba(0, 200, 255, 0.8)";
+        ctx.stroke();
+      });
+
+      animationRef.current = requestAnimationFrame(animate);
+    };
+
+    animate();
+
+    return () => {
+      cancelAnimationFrame(animationRef.current);
+      map.off("move", resize);
+      map.off("zoom", resize);
+      map.off("resize", resize);
+      canvas.remove();
+    };
+  }, [map]);
+
+  return null;
+}
 // ================= COMPONENT =================
 export default function MapPanel() {
   const [zones, setZones] = useState([]);
@@ -295,9 +482,19 @@ export default function MapPanel() {
       </div>
 
       {/* MAP */}
-      <MapContainer center={center} zoom={6} style={{ height: "100vh", width: "100%" }}>
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
+  <MapContainer
+  center={center}
+  zoom={6}
+  style={{ height: "100vh", width: "100%", position: "relative" }}
+>
+
+ <TileLayer
+  url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+  attribution="&copy; OpenStreetMap & CARTO"
+/>
+   
+<WindFlow />
         {airports.map((a, i) => (
           <Marker key={i} position={a.coords} icon={airportIcon}>
             <Popup>{a.name}</Popup>
